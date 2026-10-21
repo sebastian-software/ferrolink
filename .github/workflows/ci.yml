@@ -122,6 +122,10 @@ jobs:
         run: test ! -f .standards/pending.json
 
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        with:
+          # This repository has no root package.json to read `packageManager`
+          # from, so the pnpm version is spelled out here, as in Ferroni.
+          version: 12.11.2
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
