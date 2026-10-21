@@ -21,7 +21,7 @@ parser-comparison = ["dep:ferroni", "dep:html5ever", "dep:lol_html"]
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
 ferralk = "1.1.0"
-ferroni = { version = "2.2.4", optional = true }
+ferroni = { version = "2.3.0", optional = true }
 html5ever = { version = "0.40.1", optional = true }
 html5gum = "0.8.4"
 lol_html = { version = "3.0.1", optional = true }
