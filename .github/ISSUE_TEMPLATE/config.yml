@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability by email
+    url: https://docs.github.com/code-security/getting-started/adding-a-security-policy-to-your-repository
+    about: Do not open a public issue. Email security@sebastian-software.de — this route always works, whatever the repository's settings are.
+  - name: Report a security vulnerability as a private advisory
+    url: https://docs.github.com/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability
+    about: Do not open a public issue. Works once private vulnerability reporting is enabled for this repository; otherwise use the email route above.
