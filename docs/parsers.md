@@ -34,8 +34,8 @@ hyperfine -N --warmup 5 'target/release/ferrolink check <build-dir> --parser htm
 
 Median of 15 passes over all pages, after a warm-up pass. "Differing pages"
 compares links (URL and origin) and anchors with html5ever's. The Ferroni row
-uses the regex backend as tuned below, on Ferroni with
-[sebastian-software/ferroni#417](https://github.com/sebastian-software/ferroni/pull/417).
+uses the regex backend as tuned below, on Ferroni 2.2.4, which contains the
+fixes described below.
 
 | Backend | ms | MB/s | Pages differing |
 | --- | ---: | ---: | ---: |
@@ -55,9 +55,9 @@ runs, 20 threads unless noted):
 | Backend | Wall time |
 | --- | ---: |
 | html5gum | 23.2 ms ± 0.7 |
-| Ferroni with #417 | 23.3 ms ± 0.9 |
+| Ferroni 2.2.4 | 23.6 ms ± 0.7 |
 | lol_html | 28.7 ms ± 2.6 |
-| Ferroni 2.2.3 | 33.1 ms ± 1.5 |
+| Ferroni 2.2.3 (before the fixes) | 33.1 ms ± 1.5 |
 | html5ever | 33.8 ms ± 1.0 |
 | html5gum, one thread | 79.0 ms ± 1.4 |
 
@@ -130,14 +130,14 @@ loop, so it measured no gain.
 ## Decision
 
 html5gum stays the default and the only backend in the default build. With
-#417, Ferroni matches its speed on this build, so the choice rests on
+Ferroni 2.2.4, the regex backend matches its speed on this build, so the choice rests on
 correctness: html5gum is a complete WHATWG tokenizer with full character
 reference decoding, and follows a browser on malformed markup, which no regex
 approach does. The other backends stay behind the `parser-comparison`
 feature so the comparison can be repeated on other builds:
 
 - **Ferroni** matches html5gum on well-formed markup at the same speed (with
-  #417), but resynchronizes differently on malformed markup and decodes only
+  Ferroni 2.2.4), but resynchronizes differently on malformed markup and decodes only
   the character references ferrolink's small table knows.
 - **lol_html** comes close in speed but returns attribute values undecoded and
   brings four MPL-2.0 crates through Servo's selector stack.
