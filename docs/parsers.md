@@ -107,10 +107,20 @@ Dogfooding Ferroni on this workload turned up three problems in Ferroni:
    [sebastian-software/ferroni#418](https://github.com/sebastian-software/ferroni/pull/418)
    puts `find*` behind the same gate as the capture methods: 31.6 ms.
 
-Two smaller costs remain: `Match::as_str` validates the matched bytes on every
-call, even for matches of a `&str` search, and a single search touches the
-thread-local region and state caches about four times. ferrolink avoids the
-first with the byte APIs.
+Two smaller costs were looked at next.
+[sebastian-software/ferroni#420](https://github.com/sebastian-software/ferroni/pull/420)
+makes `Match::as_str` slice a `&str` search's text instead of validating every
+match (−18% for `find_iter` with `as_str`, −7% for `&caps[i]`). Merging the
+thread-local caches a single search touches measured no gain (−0.6% even on
+1.6 million tiny `captures_at` calls) and was left out. ferrolink uses the
+byte APIs either way.
+
+Ferroni tracks this workload since
+[sebastian-software/ferroni#422](https://github.com/sebastian-software/ferroni/pull/422):
+both patterns are cases of its source-backed regex corpus (`html_scanning`,
+with these fixtures and Ardo pages), and its `regression_bench` runs them on
+1, 4 and 8 threads, which catches a shared write per search like the ones
+above.
 
 A SIMD fast path for negated class runs (`[^"]*` with `memchr`) was tried and
 dropped: 71% of the attribute values on this build are shorter than 16 bytes,
