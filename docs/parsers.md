@@ -32,15 +32,17 @@ hyperfine -N --warmup 5 'target/release/ferrolink check <build-dir> --parser htm
 
 ### Scan throughput, one thread
 
-Median of 9 passes over all pages, after a warm-up pass. "Differing pages"
-compares links (URL and origin) and anchors with html5ever's.
+Median of 15 passes over all pages, after a warm-up pass. "Differing pages"
+compares links (URL and origin) and anchors with html5ever's. The Ferroni row
+uses the regex backend as tuned below, on Ferroni with
+[sebastian-software/ferroni#417](https://github.com/sebastian-software/ferroni/pull/417).
 
 | Backend | ms | MB/s | Pages differing |
 | --- | ---: | ---: | ---: |
-| html5gum | 51.5 | 178 | 0 |
-| lol_html | 60.3 | 152 | 0 |
-| html5ever | 111.9 | 82 | 0 |
-| Ferroni | 108.0 | 85 | 0 |
+| Ferroni | 50.3 | 183 | 0 |
+| html5gum | 51.1 | 180 | 0 |
+| lol_html | 60.9 | 151 | 0 |
+| html5ever | 113.0 | 81 | 0 |
 
 All four extract identical links and anchors from all 318 pages, and the full
 check reports the same 235 issues with each of them.
@@ -50,14 +52,14 @@ check reports the same 235 issues with each of them.
 `ferrolink check` on the whole build, walk and checks included (hyperfine, 40
 runs, 20 threads unless noted):
 
-| Backend | Wall time | Memory |
-| --- | ---: | ---: |
-| html5gum | 23.3 ms ± 0.9 | 12.9 MiB |
-| lol_html | 28.7 ms ± 2.6 | 14.9 MiB |
-| Ferroni with the fix below | 29.5 ms ± 1.5 | 14.5 MiB |
-| html5ever | 33.8 ms ± 1.0 | 16.0 MiB |
-| Ferroni 2.2.3 | 86.7 ms ± 4.8 | 14.8 MiB |
-| html5gum, one thread | 79.0 ms ± 1.4 | 7.6 MiB |
+| Backend | Wall time |
+| --- | ---: |
+| html5gum | 23.2 ms ± 0.7 |
+| Ferroni with #417 | 23.3 ms ± 0.9 |
+| lol_html | 28.7 ms ± 2.6 |
+| Ferroni 2.2.3 | 33.1 ms ± 1.5 |
+| html5ever | 33.8 ms ± 1.0 |
+| html5gum, one thread | 79.0 ms ± 1.4 |
 
 ### Malformed markup
 
@@ -65,58 +67,69 @@ On a page with an unterminated attribute quote, the three tokenizers agree with
 a browser: everything after the quote is part of the attribute value. The
 regex backend resynchronizes at the next `<` and reports links and `id`s that a
 browser never sees. The unit tests pin the same difference for an apostrophe
-inside an unquoted attribute value.
+inside an unquoted attribute value. On comment and raw-text ends (`<!-->`,
+`--!>`, `</script foo>`, `<script-x>`) all four agree.
 
-## Ferroni: why the regex backend did not scale
+## Tuning the regex backend
 
-Isolated from ferrolink, Ferroni's markup pattern runs at 139 MB/s with
-captures on one thread, 2.5 times the `regex` crate's 54 MB/s on an equivalent
-pattern. The single-thread gap to html5gum came from ferrolink's glue in the
-regex backend (a second pattern per tag, lowercasing), not from Ferroni.
+The first regex backend took 108 ms on one thread. The patterns, not Ferroni,
+were most of the gap to html5gum. The markup scan alone, isolated from
+ferrolink (one thread, medians of 7 runs):
 
-The multi-threaded result had a different cause. `find_iter` scaled linearly,
-but `captures_iter` stopped at about four threads and got slower beyond:
+| Pattern | ms | MB/s |
+| --- | ---: | ---: |
+| Comments, raw-text elements with content, start and end tags, captures | 66.0 | 139 |
+| Without end tags (nothing needs them; every match is an iteration step) | 53.5 | 172 |
+| Possessive runs (`[^<]++`, `[^-]++`) instead of lazy `[\s\S]*?` bodies | 48.3 | 190 |
+| Without the raw-text alternative tried at every `<` (`memmem` finds the end tag) | 41.7 | 220 |
+| Attribute loop unrolled, `normal* (special normal*)*` | 37.8 | 243 |
+| No capture groups: name and attributes sliced from the match, `find_iter` | 28.8 | 319 |
+| For comparison: the `regex` crate's lazy DFA, same pattern | 25.7 | 357 |
 
-| Threads | `find_iter` | `captures_iter` (2.2.3) |
-| ---: | ---: | ---: |
-| 1 | 55.9 ms | 66.0 ms |
-| 4 | 18.1 ms | 36.1 ms |
-| 8 | 7.5 ms | 50.4 ms |
-| 20 | 3.9 ms | 60.9 ms |
+With byte APIs instead of `&str` (no UTF-8 validation of the document and of
+every match) and a stricter `id` prefilter, the whole backend went from 108 ms
+to 50.3 ms. About 70% of a pass is now the backtracking matcher itself.
 
-Ferroni allocates nothing per match (the `regex` crate allocates once per
-match), so the allocator was not the cause. Every `Captures` cloned the regex's
-`Arc` to support `Captures::name`, and every clone and drop wrote the same
-shared reference count, which moved one cache line between the cores for each
-match. A second shared write sat in the adaptive seek gate of `captures()`,
-which updated its rate and its probe counter on every search.
+## Ferroni findings
 
-[sebastian-software/ferroni#417](https://github.com/sebastian-software/ferroni/pull/417)
-keeps the `Arc` only for patterns with named groups, writes the gate's shared
-state only when it changes, and samples the closed gate's probes per thread.
-With it, `captures_iter` scales like `find_iter` (7.3 ms at 20 threads instead
-of 60.9 ms), and the regex backend's full check drops from 86.7 ms to 29.5 ms.
-The released Ferroni 2.2.3 that ferrolink depends on does not contain the fix
-yet.
+Dogfooding Ferroni on this workload turned up three problems in Ferroni:
 
-A profile of the single-thread run puts about 82% of the time in the
-backtracking matcher itself and about 10% in the capture API around it: the
-remaining gap to html5gum is the cost of trying a four-way alternation at every
-`<`, not a defect.
+1. **`captures_iter` did not scale past four threads.** Every `Captures` cloned
+   the regex's `Arc` for `Captures::name`, so each match wrote one shared
+   reference count. Fixed in #417: patterns without named groups no longer
+   touch it. At 20 threads, 60.9 ms became 7.3 ms.
+2. **The seek gate of `captures()` wrote shared atomics on every search.**
+   Fixed in #417: it writes only on a change and samples its probes per
+   thread.
+3. **`find_at` consulted the seek on every call.** With dense matches, the
+   lazy DFA's scan to the next match came on top of the matcher's, and a
+   `find_bytes_at` loop took 49.4 ms where `find_iter_bytes` took 28.8 ms.
+   [sebastian-software/ferroni#418](https://github.com/sebastian-software/ferroni/pull/418)
+   puts `find*` behind the same gate as the capture methods: 31.6 ms.
+
+Two smaller costs remain: `Match::as_str` validates the matched bytes on every
+call, even for matches of a `&str` search, and a single search touches the
+thread-local region and state caches about four times. ferrolink avoids the
+first with the byte APIs.
+
+A SIMD fast path for negated class runs (`[^"]*` with `memchr`) was tried and
+dropped: 71% of the attribute values on this build are shorter than 16 bytes,
+and all value bytes together cost about 2 ms of the 66 ms scan in the byte
+loop, so it measured no gain.
 
 ## Decision
 
-html5gum is the default and the only backend in the default build: the
-fastest on the real workload, a complete WHATWG tokenizer with full character
-reference decoding, no `unsafe`, and one small dependency. The other backends
-stay behind the `parser-comparison` feature so the comparison can be repeated
-on other builds:
+html5gum stays the default and the only backend in the default build. With
+#417, Ferroni matches its speed on this build, so the choice rests on
+correctness: html5gum is a complete WHATWG tokenizer with full character
+reference decoding, and follows a browser on malformed markup, which no regex
+approach does. The other backends stay behind the `parser-comparison`
+feature so the comparison can be repeated on other builds:
 
+- **Ferroni** matches html5gum on well-formed markup at the same speed (with
+  #417), but resynchronizes differently on malformed markup and decodes only
+  the character references ferrolink's small table knows.
 - **lol_html** comes close in speed but returns attribute values undecoded and
   brings four MPL-2.0 crates through Servo's selector stack.
 - **html5ever** is the reference for correctness but half as fast without a
   tree builder, and slower still with one.
-- **Ferroni** is fast as a regex engine and, with the fix above, close to the
-  tokenizers on all cores. Like any regex approach it follows a browser only
-  on well-formed markup, and it decodes only the character references
-  ferrolink's small table knows.

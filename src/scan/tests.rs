@@ -136,6 +136,35 @@ fn unterminated_comments_hide_the_rest_of_the_document() {
 }
 
 #[test]
+fn comment_and_raw_text_ends_follow_the_tokenizer() {
+    let html = concat!(
+        r#"<!--><a href="/after-empty-comment"></a>"#,
+        r#"<!---><a href="/after-dash-comment"></a>"#,
+        r#"<!-- a -- b --!><a href="/after-bang-comment"></a>"#,
+        r#"<script>x</script foo="bar"><a href="/after-script"></a>"#,
+        r#"<script-x src="/custom"></script-x><a href="/after-custom"></a>"#,
+        r#"<style>a{}</styles></style><a href="/after-style"></a>"#,
+    );
+    for &parser in Parser::ALL {
+        let scan = scan(html.as_bytes(), parser);
+        let urls: Vec<&str> = scan.links.iter().map(|link| &*link.url).collect();
+        assert_eq!(
+            urls,
+            [
+                "/after-empty-comment",
+                "/after-dash-comment",
+                "/after-bang-comment",
+                "/after-script",
+                "/after-custom",
+                "/after-style"
+            ],
+            "{}",
+            parser.name()
+        );
+    }
+}
+
+#[test]
 fn reports_lines_of_multiline_documents() {
     let html = b"<p>\n\n<a\n href=\"/x\">\n</p>";
     for &parser in Parser::ALL {
