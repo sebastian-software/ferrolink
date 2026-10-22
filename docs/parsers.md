@@ -12,20 +12,22 @@ Four candidates were measured on the same workload:
 | [html5gum](https://crates.io/crates/html5gum) 0.8 | WHATWG tokenizer, borrowed callback events, naive raw-text state switching | MIT |
 | [html5ever](https://crates.io/crates/html5ever) 0.40 | Servo's WHATWG tokenizer with a ferrolink token sink that makes the tree builder's state switches; no tree construction | MIT OR Apache-2.0 |
 | [lol_html](https://crates.io/crates/lol_html) 3.0 | Cloudflare's streaming rewriter with a CSS selector for the relevant elements | BSD-3-Clause, pulls in MPL-2.0 crates |
-| [Ferroni](https://crates.io/crates/ferroni) 2.2 | Regular expressions over the raw text: comments, raw-text elements, start and end tags; attributes split by a second pattern | BSD-2-Clause |
+| [Ferroni](https://crates.io/crates/ferroni) 2.5 | Regular expressions over the raw text: one pattern for comments and start tags, a second to split attributes; raw-text elements skipped with `memmem` | BSD-2-Clause |
 
 ## Workload
 
-The Ardo documentation Pages artifact: 318 pages, 9.2 MB of HTML, 1,087 files,
-about 19,400 internal and 1,700 external references. Apple M1 Ultra (16
-performance and 4 efficiency cores), macOS, Rust 1.99, release build.
+The Ardo documentation Pages artifact of 2026-10-22: 335 pages, 10.4 MB of
+HTML, 1,043 files, about 22,600 internal and 2,400 external references. Apple
+M1 Ultra (16 performance and 4 efficiency cores), macOS, Rust 1.99, release
+build. The first round of this comparison ran on the 318-page build of
+2026-10-13 (9.2 MB); a number below that comes from that build says so.
 
 Reproduce with:
 
 ```bash
 cargo run --release --features parser-comparison --example compare_parsers -- <build-dir>
 cargo build --release --features parser-comparison
-hyperfine -N --warmup 5 'target/release/ferrolink check <build-dir> --parser html5gum'
+hyperfine -N --warmup 5 'target/release/ferrolink check <build-dir> --parser ferroni'
 ```
 
 ## Results
@@ -34,18 +36,26 @@ hyperfine -N --warmup 5 'target/release/ferrolink check <build-dir> --parser htm
 
 Median of 15 passes over all pages, after a warm-up pass. "Differing pages"
 compares links (URL and origin) and anchors with html5ever's. The Ferroni row
-uses the regex backend as tuned below, on Ferroni 2.2.4, which contains the
-fixes described below.
+uses the regex backend as tuned below, on Ferroni 2.5.2.
 
 | Backend | ms | MB/s | Pages differing |
 | --- | ---: | ---: | ---: |
-| Ferroni | 50.3 | 183 | 0 |
-| html5gum | 51.1 | 180 | 0 |
-| lol_html | 60.9 | 151 | 0 |
-| html5ever | 113.0 | 81 | 0 |
+| Ferroni | 54.8 | 190 | 0 |
+| html5gum | 61.1 | 170 | 0 |
+| lol_html | 73.3 | 142 | 0 |
+| html5ever | 129.0 | 81 | 0 |
 
-All four extract identical links and anchors from all 318 pages, and the full
-check reports the same 235 issues with each of them.
+All four extract identical links and anchors from all 335 pages, and the full
+check reports the same 234 issues with each of them.
+
+With Ferroni 2.3.0 the regex backend and html5gum were level on this build
+(60.4 and 61.0 ms). Ferroni 2.4.0 specialized the negated byte-class runs
+(`[^"]*+`, `[^<]++`) both patterns are built from
+([sebastian-software/ferroni#441](https://github.com/sebastian-software/ferroni/pull/441),
+[#443](https://github.com/sebastian-software/ferroni/pull/443)). Ferroni's own
+paired measurement of the two corpus steps found about 4% less time; in
+ferrolink's backend, where the patterns run over whole documents through the
+byte APIs, the gain is the 10% above.
 
 ### End to end, all cores
 
@@ -54,12 +64,20 @@ runs, 20 threads unless noted):
 
 | Backend | Wall time |
 | --- | ---: |
-| html5gum | 23.2 ms ± 0.7 |
-| Ferroni 2.2.4 | 23.6 ms ± 0.7 |
-| lol_html | 28.7 ms ± 2.6 |
-| Ferroni 2.2.3 (before the fixes) | 33.1 ms ± 1.5 |
-| html5ever | 33.8 ms ± 1.0 |
-| html5gum, one thread | 79.0 ms ± 1.4 |
+| html5gum | 23.7 ms ± 0.6 |
+| Ferroni | 24.8 ms ± 0.8 |
+| lol_html | 30.1 ms ± 1.2 |
+| html5ever | 35.4 ms ± 5.6 |
+| Ferroni, one thread | 89.2 ms ± 8.6 |
+| html5gum, one thread | 91.6 ms ± 1.0 |
+
+On 20 threads the scan phase takes 7.5 ms with Ferroni and 7.3 ms with
+html5gum (`--timings`, medians of 15 interleaved runs), the walk 9 ms and the
+checks 2 ms, so the regex backend's single-thread lead is not visible end to
+end. Compiling the two patterns costs about 0.4 ms per process (the 4-page
+fixture site on one thread: 3.9 ms against 3.5 ms). Before the Ferroni 2.2.4
+fixes described below, the same check took 33.1 ms ± 1.5 on the 318-page
+build.
 
 ### Malformed markup
 
@@ -72,9 +90,9 @@ inside an unquoted attribute value. On comment and raw-text ends (`<!-->`,
 
 ## Tuning the regex backend
 
-The first regex backend took 108 ms on one thread. The patterns, not Ferroni,
-were most of the gap to html5gum. The markup scan alone, isolated from
-ferrolink (one thread, medians of 7 runs):
+The first regex backend took 108 ms on one thread, on the 318-page build. The
+patterns, not Ferroni, were most of the gap to html5gum. The markup scan alone,
+isolated from ferrolink (one thread, medians of 7 runs):
 
 | Pattern | ms | MB/s |
 | --- | ---: | ---: |
@@ -129,17 +147,25 @@ loop, so it measured no gain.
 
 ## Decision
 
-html5gum stays the default and the only backend in the default build. With
-Ferroni 2.2.4, the regex backend matches its speed on this build, so the choice rests on
-correctness: html5gum is a complete WHATWG tokenizer with full character
-reference decoding, and follows a browser on malformed markup, which no regex
-approach does. The other backends stay behind the `parser-comparison`
-feature so the comparison can be repeated on other builds:
+Ferroni is the default and the only backend in the default build, since
+Ferroni 2.5.2. Until then html5gum was the default: with Ferroni 2.2.4 the two
+were level, and the tie went to the complete WHATWG tokenizer. With Ferroni
+2.4.0 the regex backend is the fastest on one thread, and it is the engine
+the family dogfoods, so ferrolink now exercises Ferroni on every build it
+checks. The price is known and small for generator output: the regex backend
+resynchronizes at the next `<` on malformed markup where a browser would not,
+and decodes only the character references ferrolink's table knows
+(`decode_char_refs`: numeric references and the eleven named ones that occur
+in URLs). On both Ardo builds every backend reports the same issues.
 
-- **Ferroni** matches html5gum on well-formed markup at the same speed (with
-  Ferroni 2.2.4), but resynchronizes differently on malformed markup and decodes only
-  the character references ferrolink's small table knows.
-- **lol_html** comes close in speed but returns attribute values undecoded and
-  brings four MPL-2.0 crates through Servo's selector stack.
+The tokenizers stay behind the `parser-comparison` feature so the comparison
+can be repeated on other builds, and so a page where the regex backend
+disagrees can be checked against them:
+
+- **html5gum** is a complete WHATWG tokenizer with full character reference
+  decoding that follows a browser on malformed markup; 10% slower on one
+  thread, level on all cores.
+- **lol_html** returns attribute values undecoded and brings four MPL-2.0
+  crates through Servo's selector stack.
 - **html5ever** is the reference for correctness but half as fast without a
   tree builder, and slower still with one.

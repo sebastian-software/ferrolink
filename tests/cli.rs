@@ -74,7 +74,7 @@ fn counts_absolute_urls_as_external_without_a_site_url() {
 }
 
 /// Real pages of the Ardo documentation build: every backend extracts the
-/// same links, origins, lines, and anchors.
+/// same links, origins, and anchors as the html5ever reference.
 #[cfg(feature = "parser-comparison")]
 #[test]
 fn every_parser_scans_real_pages_identically() {
@@ -84,7 +84,7 @@ fn every_parser_scans_real_pages_identically() {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/ardo");
     for page in ["what-is-ardo.html", "component-playground.html"] {
         let html = std::fs::read(Path::new(dir).join(page)).unwrap();
-        let reference = scan(&html, Parser::Html5gum);
+        let reference = scan(&html, Parser::Html5ever);
         assert!(
             reference.links.len() > 50,
             "{page}: {} links",
@@ -117,8 +117,8 @@ fn every_parser_scans_real_pages_identically() {
 #[cfg(feature = "parser-comparison")]
 #[test]
 fn every_parser_finds_the_same_issues() {
-    let reference = json_issues(&["--base", "/docs/", "--parser", "html5gum"]);
-    for parser in ["html5ever", "lol-html", "ferroni"] {
+    let reference = json_issues(&["--base", "/docs/", "--parser", "ferroni"]);
+    for parser in ["html5gum", "html5ever", "lol-html"] {
         assert_eq!(
             json_issues(&["--base", "/docs/", "--parser", parser]),
             reference,

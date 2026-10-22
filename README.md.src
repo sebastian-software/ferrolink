@@ -85,10 +85,11 @@ check takes about 26 ms on an Apple M1 Ultra. The directory walk uses
 [ferralk](https://github.com/sebastian-software/ferralk); pages are scanned on
 every core.
 
-ferrolink scans with [html5gum](https://crates.io/crates/html5gum), a WHATWG
-tokenizer. [docs/parsers.md](docs/parsers.md) compares it with html5ever,
-lol_html, and a [Ferroni](https://github.com/sebastian-software/ferroni)
-regex scanner on the same workload. Build with
+ferrolink scans with [Ferroni](https://github.com/sebastian-software/ferroni)
+regular expressions: one pattern finds comments and start tags, a second
+splits the attributes of the tags that matter.
+[docs/parsers.md](docs/parsers.md) compares it with the html5gum, html5ever,
+and lol_html tokenizers on the same workload. Build with
 `--features parser-comparison` to reproduce the comparison with `--parser`.
 
 ## Development

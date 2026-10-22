@@ -15,15 +15,15 @@ exclude = [".github/", "docs/"]
 
 [features]
 # The alternative HTML backends behind `--parser`, kept to reproduce the
-# comparison in docs/parsers.md. The default build ships html5gum only.
-parser-comparison = ["dep:ferroni", "dep:html5ever", "dep:lol_html"]
+# comparison in docs/parsers.md. The default build ships Ferroni only.
+parser-comparison = ["dep:html5ever", "dep:html5gum", "dep:lol_html"]
 
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
 ferralk = "1.1.0"
-ferroni = { version = "2.3.0", optional = true }
+ferroni = "2.5.2"
 html5ever = { version = "0.40.1", optional = true }
-html5gum = "0.8.4"
+html5gum = { version = "0.8.4", optional = true }
 lol_html = { version = "3.0.1", optional = true }
 memchr = "2.8.3"
 percent-encoding = "2.3.2"

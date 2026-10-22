@@ -1,6 +1,4 @@
-#[cfg(feature = "parser-comparison")]
-use super::decode_char_refs;
-use super::{PageScan, Parser, refresh_url, scan, srcset_urls};
+use super::{PageScan, Parser, decode_char_refs, refresh_url, scan, srcset_urls};
 
 /// A document exercising every element ferrolink reads and every place a
 /// link-shaped string must be ignored. Each start tag sits on one line so
@@ -110,6 +108,7 @@ fn tokenizers_decode_every_named_reference() {
     }
 }
 
+#[cfg(feature = "parser-comparison")]
 #[test]
 fn tokenizers_end_attribute_values_where_browsers_do() {
     // An apostrophe inside an unquoted value is just a character.
@@ -192,7 +191,6 @@ fn parses_refresh_targets() {
     assert_eq!(refresh_url("5"), None);
 }
 
-#[cfg(feature = "parser-comparison")]
 #[test]
 fn decodes_character_references() {
     assert_eq!(decode_char_refs("/a?b=1&amp;c=2"), "/a?b=1&c=2");

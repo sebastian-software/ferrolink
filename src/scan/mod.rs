@@ -4,18 +4,17 @@
 //! only in how they tokenize. What counts as a link, an anchor, or a `<base>`
 //! is decided here, once.
 //!
-//! The default build contains html5gum only. The `parser-comparison` feature
-//! adds the backends measured against it in `docs/parsers.md`.
+//! The default build contains Ferroni only. The `parser-comparison` feature
+//! adds the tokenizer backends measured against it in `docs/parsers.md`.
 
-#[cfg(feature = "parser-comparison")]
 mod ferroni;
 #[cfg(feature = "parser-comparison")]
 mod html5ever;
+#[cfg(feature = "parser-comparison")]
 mod html5gum;
 #[cfg(feature = "parser-comparison")]
 mod lol_html;
 
-#[cfg(feature = "parser-comparison")]
 use std::borrow::Cow;
 
 use rustc_hash::FxHashSet;
@@ -28,10 +27,15 @@ use rustc_hash::FxHashSet;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum Parser {
-    /// [html5gum](https://crates.io/crates/html5gum): a WHATWG tokenizer with
-    /// borrowed callback events and naive raw-text state switching. The
+    /// [Ferroni](https://crates.io/crates/ferroni) regular expressions over
+    /// the raw text: no tokenizer, only the patterns links appear in. The
     /// fastest backend measured, and the only one in the default build.
     #[default]
+    Ferroni,
+    /// [html5gum](https://crates.io/crates/html5gum): a WHATWG tokenizer with
+    /// borrowed callback events and naive raw-text state switching.
+    #[cfg(feature = "parser-comparison")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "parser-comparison")))]
     Html5gum,
     /// [html5ever](https://crates.io/crates/html5ever): Servo's tokenizer, with
     /// raw-text and CDATA states switched by ferrolink's own sink.
@@ -43,36 +47,31 @@ pub enum Parser {
     #[cfg(feature = "parser-comparison")]
     #[cfg_attr(docsrs, doc(cfg(feature = "parser-comparison")))]
     LolHtml,
-    /// [Ferroni](https://crates.io/crates/ferroni) regular expressions over
-    /// the raw text: no tokenizer, only the patterns links appear in.
-    #[cfg(feature = "parser-comparison")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "parser-comparison")))]
-    Ferroni,
 }
 
 impl Parser {
     /// Every backend in this build, in the order they are documented.
     pub const ALL: &[Parser] = &[
+        Parser::Ferroni,
+        #[cfg(feature = "parser-comparison")]
         Parser::Html5gum,
         #[cfg(feature = "parser-comparison")]
         Parser::Html5ever,
         #[cfg(feature = "parser-comparison")]
         Parser::LolHtml,
-        #[cfg(feature = "parser-comparison")]
-        Parser::Ferroni,
     ];
 
     /// The name used on the command line and in reports.
     #[must_use]
     pub fn name(self) -> &'static str {
         match self {
+            Parser::Ferroni => "ferroni",
+            #[cfg(feature = "parser-comparison")]
             Parser::Html5gum => "html5gum",
             #[cfg(feature = "parser-comparison")]
             Parser::Html5ever => "html5ever",
             #[cfg(feature = "parser-comparison")]
             Parser::LolHtml => "lol-html",
-            #[cfg(feature = "parser-comparison")]
-            Parser::Ferroni => "ferroni",
         }
     }
 
@@ -115,13 +114,13 @@ pub struct PageScan {
 #[must_use]
 pub fn scan(html: &[u8], parser: Parser) -> PageScan {
     match parser {
+        Parser::Ferroni => ferroni::scan(html),
+        #[cfg(feature = "parser-comparison")]
         Parser::Html5gum => html5gum::scan(html),
         #[cfg(feature = "parser-comparison")]
         Parser::Html5ever => html5ever::scan(html),
         #[cfg(feature = "parser-comparison")]
         Parser::LolHtml => lol_html::scan(html),
-        #[cfg(feature = "parser-comparison")]
-        Parser::Ferroni => ferroni::scan(html),
     }
 }
 
@@ -275,6 +274,9 @@ impl Collector {
         }
     }
 
+    /// Only the tokenizer backends report end tags; the regex backend skips
+    /// raw-text content itself.
+    #[cfg(feature = "parser-comparison")]
     fn end_tag(&mut self, name: &[u8]) {
         self.in_start_tag = false;
         if (name == b"svg" || name == b"math") && self.foreign_depth > 0 {
@@ -289,7 +291,6 @@ impl Collector {
         self.foreign_depth > 0
     }
 
-    #[cfg(feature = "parser-comparison")]
     fn attribute(&mut self, name: &[u8], value: &[u8]) {
         self.attribute_name(name);
         self.attribute_value(value);
@@ -437,7 +438,6 @@ impl Collector {
 /// Numeric references and the named references that occur in URLs are
 /// decoded; other named references are kept literally. The tokenizer backends
 /// decode the full WHATWG table instead.
-#[cfg(feature = "parser-comparison")]
 fn decode_char_refs(value: &str) -> Cow<'_, str> {
     if !value.contains('&') {
         return Cow::Borrowed(value);
