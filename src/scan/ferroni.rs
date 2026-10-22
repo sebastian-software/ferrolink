@@ -10,9 +10,10 @@
 //! The patterns are shaped for a backtracking engine, and each choice was
 //! measured on the Ardo documentation build:
 //!
-//! - The markup pattern has no capture groups. The tag name and the attribute
-//!   text are sliced from the match, and a group-free pattern runs through
-//!   Ferroni's cheaper find path instead of the capture path.
+//! - Neither pattern has capture groups. The tag name and the attribute text,
+//!   and then each attribute's name and value, are sliced from the match; a
+//!   group-free pattern runs through Ferroni's cheaper find path instead of
+//!   the capture path.
 //! - The attribute part is an unrolled loop, `normal* (special normal*)*`,
 //!   instead of a three-way alternation per token.
 //! - End tags are not matched (nothing here needs them), and no raw-text
@@ -39,9 +40,13 @@ const MARKUP: &str = concat!(
     r#"[^>"']*+(?:"[^"]*+"[^>"']*+|'[^']*+'[^>"']*+)*+>"#,
 );
 
-/// Groups: 1 name; value in 2 (double-quoted), 3 (single-quoted), or 4 (bare).
-const ATTRIBUTE: &str =
-    r#"([^\s"'>/=][^\s"'>/=]*+)(?:\s*+=\s*+(?:"([^"]*+)"|'([^']*+)'|([^\s>]++)))?"#;
+/// One attribute: a name, then optionally `=` and a quoted or bare value.
+/// No capture groups; [`split_attribute`] slices the match. Whitespace is
+/// HTML whitespace, as in [`MARKUP`].
+const ATTRIBUTE: &str = concat!(
+    r#"[^\t\n\f\r "'>/=]++"#,
+    r#"(?:[\t\n\f\r ]*+=[\t\n\f\r ]*+(?:"[^"]*+"|'[^']*+'|[^\t\n\f\r >]++))?"#,
+);
 
 /// Elements whose content is text up to their end tag, with scripting enabled
 /// as in a browser.
@@ -89,13 +94,9 @@ pub(super) fn scan(html: &[u8]) -> PageScan {
             // Most tags are layout: only an `id` could matter on them, so their
             // attributes are not split unless one might be there.
             if Element::classify(&name) != Element::Other || may_have_id(attributes) {
-                for attribute in ATTRIBUTE_RE.captures_iter_bytes(attributes) {
-                    let Some(attribute_match) = attribute.get(1) else {
-                        continue;
-                    };
-                    lowercase_into(&mut attribute_name, attribute_match.as_bytes());
-                    let value = attribute.get(2).or(attribute.get(3)).or(attribute.get(4));
-                    let value = value.map_or(&b""[..], |value| value.as_bytes());
+                for found in ATTRIBUTE_RE.find_iter_bytes(attributes) {
+                    let (attribute, value) = split_attribute(found.as_bytes());
+                    lowercase_into(&mut attribute_name, attribute);
                     if value.contains(&b'&') {
                         let text = String::from_utf8_lossy(value);
                         collector.attribute(&attribute_name, decode_char_refs(&text).as_bytes());
@@ -117,7 +118,37 @@ pub(super) fn scan(html: &[u8]) -> PageScan {
 
 /// Whether `byte` ends a tag name: HTML whitespace, `/`, or `>`.
 fn is_name_end(byte: u8) -> bool {
-    matches!(byte, b'\t' | b'\n' | b'\x0c' | b'\r' | b' ' | b'/' | b'>')
+    is_html_whitespace(byte) || matches!(byte, b'/' | b'>')
+}
+
+fn is_html_whitespace(byte: u8) -> bool {
+    matches!(byte, b'\t' | b'\n' | b'\x0c' | b'\r' | b' ')
+}
+
+/// The name and the value of one [`ATTRIBUTE`] match: the value without its
+/// quotes, and empty when the attribute has none.
+fn split_attribute(attribute: &[u8]) -> (&[u8], &[u8]) {
+    let name_end = attribute
+        .iter()
+        .position(|&byte| byte == b'=' || is_html_whitespace(byte))
+        .unwrap_or(attribute.len());
+    let (name, rest) = attribute.split_at(name_end);
+    let Some(rest) = trim_html_whitespace_start(rest).strip_prefix(b"=") else {
+        return (name, b"");
+    };
+    // The pattern guarantees that a value opened by a quote ends with it.
+    match trim_html_whitespace_start(rest) {
+        [b'"', inner @ .., b'"'] | [b'\'', inner @ .., b'\''] => (name, inner),
+        value => (name, value),
+    }
+}
+
+fn trim_html_whitespace_start(bytes: &[u8]) -> &[u8] {
+    let start = bytes
+        .iter()
+        .position(|&byte| !is_html_whitespace(byte))
+        .unwrap_or(bytes.len());
+    &bytes[start..]
 }
 
 /// The position after the end tag that closes a raw-text element whose
