@@ -16,7 +16,7 @@ use rustc_hash::FxHashMap;
 use crate::deploy;
 use crate::report::{Issue, IssueKind, Report, Summary, Timings};
 use crate::resolve::{DocumentBase, Resolved, Resolver};
-use crate::scan::{self, PageScan, Parser, RawLink};
+use crate::scan::{self, PageScan, RawLink};
 use crate::site::Site;
 
 /// What to check and how.
@@ -33,8 +33,6 @@ pub struct Config {
     /// checked. Matching pages are still scanned, so links into them keep
     /// their anchor checks.
     pub exclude: Vec<String>,
-    /// The HTML backend.
-    pub parser: Parser,
     /// Worker threads; the number of CPUs when unset.
     pub threads: Option<NonZeroUsize>,
     /// Whether to check `versions.json`, `_redirects`, and `vercel.json`.
@@ -50,7 +48,6 @@ impl Config {
             base_path: "/".to_owned(),
             site_url: None,
             exclude: Vec::new(),
-            parser: Parser::default(),
             threads: None,
             deploy_files: true,
         }
@@ -169,7 +166,7 @@ fn run(config: &Config, exclude: Option<&PatternSet>, threads: usize) -> Result<
         .map(|page| {
             let path = config.root.join(&page.path);
             let html = fs::read(&path).map_err(|error| Error::Read(path, error))?;
-            Ok(scan::scan(&html, config.parser))
+            Ok(scan::scan(&html))
         })
         .collect::<Result<Vec<PageScan>, Error>>()?;
     let scan_done = Instant::now();
@@ -220,7 +217,6 @@ fn run(config: &Config, exclude: Option<&PatternSet>, threads: usize) -> Result<
             skipped_links: outcome.skipped,
             issues: outcome.issues.len(),
             base_path: resolver.base_path().to_owned(),
-            parser: config.parser.name(),
         },
         issues: outcome.issues,
         timings: Timings {

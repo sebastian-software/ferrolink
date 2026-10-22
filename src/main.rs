@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser as _, Subcommand, ValueEnum};
-use ferrolink::{Config, Parser, Report};
+use ferrolink::{Config, Report};
 
 /// Fast, parallel link checker for static HTML builds.
 #[derive(clap::Parser)]
@@ -43,11 +43,6 @@ struct CheckArgs {
     #[arg(long, value_name = "GLOB")]
     exclude: Vec<String>,
 
-    /// HTML backend used to scan pages. Builds with the `parser-comparison`
-    /// feature also offer html5gum, html5ever, and lol-html.
-    #[arg(long, value_name = "NAME", default_value = "ferroni", value_parser = parse_parser)]
-    parser: Parser,
-
     /// Output format.
     #[arg(long, value_enum, default_value_t = Format::Human)]
     format: Format,
@@ -63,13 +58,6 @@ struct CheckArgs {
     /// Print the duration of each phase to stderr.
     #[arg(long)]
     timings: bool,
-}
-
-fn parse_parser(name: &str) -> Result<Parser, String> {
-    Parser::from_name(name).ok_or_else(|| {
-        let available: Vec<&str> = Parser::ALL.iter().map(|parser| parser.name()).collect();
-        format!("this build offers {}", available.join(", "))
-    })
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -91,7 +79,6 @@ fn main() -> ExitCode {
         base_path,
         site_url: args.site_url.clone(),
         exclude: args.exclude.clone(),
-        parser: args.parser,
         threads: args.jobs,
         deploy_files: !args.no_deploy_files,
     };
@@ -105,8 +92,8 @@ fn main() -> ExitCode {
     if args.timings {
         let t = report.timings;
         eprintln!(
-            "walk {:.1} ms · scan {:.1} ms · check {:.1} ms · parser {}",
-            t.walk_ms, t.scan_ms, t.check_ms, report.summary.parser
+            "walk {:.1} ms · scan {:.1} ms · check {:.1} ms",
+            t.walk_ms, t.scan_ms, t.check_ms
         );
     }
     let written = match args.format {

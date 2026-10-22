@@ -13,18 +13,10 @@ keywords = ["html", "links", "static-site", "checker", "ferramenta"]
 categories = ["command-line-utilities", "development-tools", "web-programming"]
 exclude = [".github/", "docs/"]
 
-[features]
-# The alternative HTML backends behind `--parser`, kept to reproduce the
-# comparison in docs/parsers.md. The default build ships Ferroni only.
-parser-comparison = ["dep:html5ever", "dep:html5gum", "dep:lol_html"]
-
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
 ferralk = "1.1.0"
 ferroni = "2.5.2"
-html5ever = { version = "0.40.1", optional = true }
-html5gum = { version = "0.8.4", optional = true }
-lol_html = { version = "3.0.1", optional = true }
 memchr = "2.8.3"
 percent-encoding = "2.3.2"
 rayon = "1.12.0"
@@ -34,10 +26,6 @@ serde_json = "1.0.154"
 
 [dev-dependencies]
 tempfile = "3.27.0"
-
-[[example]]
-name = "compare_parsers"
-required-features = ["parser-comparison"]
 
 [package.metadata.docs.rs]
 all-features = true

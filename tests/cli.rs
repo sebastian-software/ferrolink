@@ -73,58 +73,27 @@ fn counts_absolute_urls_as_external_without_a_site_url() {
     assert_eq!(issues.len(), 7);
 }
 
-/// Real pages of the Ardo documentation build: every backend extracts the
-/// same links, origins, and anchors as the html5ever reference.
-#[cfg(feature = "parser-comparison")]
+/// Real pages of the Ardo documentation build, scanned the way the check
+/// scans them. The counts pin the backend's reading of generator output.
 #[test]
-fn every_parser_scans_real_pages_identically() {
-    use ferrolink::Parser;
+fn scans_real_ardo_pages() {
     use ferrolink::scan::scan;
 
-    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/ardo");
-    for page in ["what-is-ardo.html", "component-playground.html"] {
-        let html = std::fs::read(Path::new(dir).join(page)).unwrap();
-        let reference = scan(&html, Parser::Html5ever);
-        assert!(
-            reference.links.len() > 50,
-            "{page}: {} links",
-            reference.links.len()
-        );
-        for &parser in Parser::ALL {
-            let scanned = scan(&html, parser);
-            let urls = |scan: &ferrolink::scan::PageScan| {
-                scan.links
-                    .iter()
-                    .map(|link| (link.url.to_string(), link.origin))
-                    .collect::<Vec<_>>()
-            };
-            assert_eq!(
-                urls(&scanned),
-                urls(&reference),
-                "{page}: {}",
-                parser.name()
-            );
-            assert_eq!(
-                scanned.anchors,
-                reference.anchors,
-                "{page}: {}",
-                parser.name()
-            );
-        }
-    }
-}
-
-#[cfg(feature = "parser-comparison")]
-#[test]
-fn every_parser_finds_the_same_issues() {
-    let reference = json_issues(&["--base", "/docs/", "--parser", "ferroni"]);
-    for parser in ["html5gum", "html5ever", "lol-html"] {
-        assert_eq!(
-            json_issues(&["--base", "/docs/", "--parser", parser]),
-            reference,
-            "{parser}"
-        );
-    }
+    let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/ardo"));
+    let counts: Vec<(&str, usize, usize)> = ["what-is-ardo.html", "component-playground.html"]
+        .into_iter()
+        .map(|page| {
+            let scan = scan(&std::fs::read(dir.join(page)).unwrap());
+            (page, scan.links.len(), scan.anchors.len())
+        })
+        .collect();
+    assert_eq!(
+        counts,
+        [
+            ("what-is-ardo.html", 73, 15),
+            ("component-playground.html", 54, 4)
+        ]
+    );
 }
 
 #[test]

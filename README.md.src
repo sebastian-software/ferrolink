@@ -88,9 +88,8 @@ every core.
 ferrolink scans with [Ferroni](https://github.com/sebastian-software/ferroni)
 regular expressions: one pattern finds comments and start tags, a second
 splits the attributes of the tags that matter.
-[docs/parsers.md](docs/parsers.md) compares it with the html5gum, html5ever,
-and lol_html tokenizers on the same workload. Build with
-`--features parser-comparison` to reproduce the comparison with `--parser`.
+[docs/parsers.md](docs/parsers.md) records how it was chosen over the
+html5gum, html5ever, and lol_html tokenizers on the same workload.
 
 ## Development
 
