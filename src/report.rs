@@ -64,8 +64,6 @@ pub struct Summary {
     pub issues: usize,
     /// The base path the site is served under.
     pub base_path: String,
-    /// The parser backend that scanned the pages.
-    pub parser: &'static str,
 }
 
 /// Wall-clock time per phase, in milliseconds.

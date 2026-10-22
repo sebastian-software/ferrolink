@@ -28,4 +28,3 @@ mod site;
 
 pub use check::{Config, Error, check};
 pub use report::{Issue, IssueKind, Report, Summary, Timings};
-pub use scan::Parser;

@@ -1,89 +1,15 @@
 //! Extracting link targets and anchor names from one HTML document.
 //!
-//! Every parser backend drives the same collector, so the backends differ
-//! only in how they tokenize. What counts as a link, an anchor, or a `<base>`
-//! is decided here, once.
-//!
-//! The default build contains Ferroni only. The `parser-comparison` feature
-//! adds the tokenizer backends measured against it in `docs/parsers.md`.
+//! The Ferroni backend finds tags and attributes with two regular expressions
+//! and feeds them to the collector, which decides, once, what counts as a
+//! link, an anchor, or a `<base>`. `docs/parsers.md` records how the backend
+//! was chosen over the html5gum, html5ever, and lol_html tokenizers.
 
 mod ferroni;
-#[cfg(feature = "parser-comparison")]
-mod html5ever;
-#[cfg(feature = "parser-comparison")]
-mod html5gum;
-#[cfg(feature = "parser-comparison")]
-mod lol_html;
 
 use std::borrow::Cow;
 
 use rustc_hash::FxHashSet;
-
-/// The HTML backend used to scan pages.
-///
-/// All backends feed the same collector and produce identical results for
-/// well-formed documents; they differ in speed and in how closely they follow
-/// the tree-construction rules that switch tokenizer states.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-#[non_exhaustive]
-pub enum Parser {
-    /// [Ferroni](https://crates.io/crates/ferroni) regular expressions over
-    /// the raw text: no tokenizer, only the patterns links appear in. The
-    /// fastest backend measured, and the only one in the default build.
-    #[default]
-    Ferroni,
-    /// [html5gum](https://crates.io/crates/html5gum): a WHATWG tokenizer with
-    /// borrowed callback events and naive raw-text state switching.
-    #[cfg(feature = "parser-comparison")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "parser-comparison")))]
-    Html5gum,
-    /// [html5ever](https://crates.io/crates/html5ever): Servo's tokenizer, with
-    /// raw-text and CDATA states switched by ferrolink's own sink.
-    #[cfg(feature = "parser-comparison")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "parser-comparison")))]
-    Html5ever,
-    /// [lol_html](https://crates.io/crates/lol_html): Cloudflare's streaming
-    /// rewriter, driven by a CSS selector for the elements that matter.
-    #[cfg(feature = "parser-comparison")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "parser-comparison")))]
-    LolHtml,
-}
-
-impl Parser {
-    /// Every backend in this build, in the order they are documented.
-    pub const ALL: &[Parser] = &[
-        Parser::Ferroni,
-        #[cfg(feature = "parser-comparison")]
-        Parser::Html5gum,
-        #[cfg(feature = "parser-comparison")]
-        Parser::Html5ever,
-        #[cfg(feature = "parser-comparison")]
-        Parser::LolHtml,
-    ];
-
-    /// The name used on the command line and in reports.
-    #[must_use]
-    pub fn name(self) -> &'static str {
-        match self {
-            Parser::Ferroni => "ferroni",
-            #[cfg(feature = "parser-comparison")]
-            Parser::Html5gum => "html5gum",
-            #[cfg(feature = "parser-comparison")]
-            Parser::Html5ever => "html5ever",
-            #[cfg(feature = "parser-comparison")]
-            Parser::LolHtml => "lol-html",
-        }
-    }
-
-    /// The backend with this [`name`](Self::name), if the build contains it.
-    #[must_use]
-    pub fn from_name(name: &str) -> Option<Parser> {
-        Parser::ALL
-            .iter()
-            .copied()
-            .find(|parser| parser.name() == name)
-    }
-}
 
 /// One URL reference found in a document, before resolution.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -107,21 +33,13 @@ pub struct PageScan {
     pub base_href: Option<Box<str>>,
 }
 
-/// Scans `html` with the chosen backend.
+/// Scans `html`.
 ///
 /// Input is treated as UTF-8; invalid sequences are replaced rather than
 /// rejected, as browsers do for a document declared as UTF-8.
 #[must_use]
-pub fn scan(html: &[u8], parser: Parser) -> PageScan {
-    match parser {
-        Parser::Ferroni => ferroni::scan(html),
-        #[cfg(feature = "parser-comparison")]
-        Parser::Html5gum => html5gum::scan(html),
-        #[cfg(feature = "parser-comparison")]
-        Parser::Html5ever => html5ever::scan(html),
-        #[cfg(feature = "parser-comparison")]
-        Parser::LolHtml => lol_html::scan(html),
-    }
+pub fn scan(html: &[u8]) -> PageScan {
+    ferroni::scan(html)
 }
 
 /// Elements whose attributes ferrolink reads. Everything else only
@@ -219,92 +137,33 @@ fn slot(element: Element, attribute: &[u8]) -> Option<Slot> {
     Some(slot)
 }
 
-/// Attributes a backend has to report for an element, for backends that look
-/// attributes up by name instead of iterating them.
-#[cfg(feature = "parser-comparison")]
-fn wanted_attributes(element: Element) -> &'static [&'static str] {
-    use Element as E;
-    match element {
-        E::A => &["id", "href", "name"],
-        E::Area | E::Base => &["id", "href"],
-        E::Image | E::Use => &["id", "href", "xlink:href"],
-        E::Img | E::Source => &["id", "src", "srcset"],
-        E::Link => &["id", "href", "rel"],
-        E::Meta => &["id", "http-equiv", "name", "property", "content"],
-        E::Object => &["id", "data"],
-        E::Video => &["id", "src", "poster"],
-        E::Audio | E::Embed | E::Iframe | E::Script | E::Track => &["id", "src"],
-        E::Other => &["id"],
-    }
-}
-
-/// Backend-independent state machine fed with start tags and attributes.
+/// State machine fed with start tags and attributes.
 ///
-/// Backends call [`open_tag`](Self::open_tag), then [`attribute`](Self::attribute)
-/// (or the split [`attribute_name`](Self::attribute_name) /
-/// [`attribute_value`](Self::attribute_value) pair) for each attribute, then
-/// [`close_tag`](Self::close_tag). Positions are whatever the backend tracks;
-/// [`finish`](Self::finish) turns byte offsets into lines when needed.
+/// The backend calls [`open_tag`](Self::open_tag) with the byte offset of a
+/// start tag, then [`attribute`](Self::attribute) for each attribute, then
+/// [`close_tag`](Self::close_tag); [`finish_with_offsets`](Self::finish_with_offsets)
+/// turns the offsets into lines.
 #[derive(Default)]
 struct Collector {
     scan: PageScan,
-    in_start_tag: bool,
     element: Option<Element>,
     position: usize,
-    slot: Option<Slot>,
     pending: Vec<(&'static str, String)>,
     rel: String,
     http_equiv: String,
     meta_name: String,
     content: Option<String>,
-    foreign_depth: usize,
-    opened_foreign: bool,
     positions: Vec<usize>,
 }
 
 impl Collector {
     fn open_tag(&mut self, name: &[u8], position: usize) {
-        self.in_start_tag = true;
         self.element = Some(Element::classify(name));
         self.position = position;
-        self.slot = None;
-        self.opened_foreign = name == b"svg" || name == b"math";
-        if self.opened_foreign {
-            self.foreign_depth += 1;
-        }
-    }
-
-    /// Only the tokenizer backends report end tags; the regex backend skips
-    /// raw-text content itself.
-    #[cfg(feature = "parser-comparison")]
-    fn end_tag(&mut self, name: &[u8]) {
-        self.in_start_tag = false;
-        if (name == b"svg" || name == b"math") && self.foreign_depth > 0 {
-            self.foreign_depth -= 1;
-        }
-    }
-
-    /// Whether the tokenizer is inside `<svg>` or `<math>`, where raw-text
-    /// elements do not switch states and CDATA sections are allowed.
-    #[cfg(feature = "parser-comparison")]
-    fn in_foreign_content(&self) -> bool {
-        self.foreign_depth > 0
     }
 
     fn attribute(&mut self, name: &[u8], value: &[u8]) {
-        self.attribute_name(name);
-        self.attribute_value(value);
-    }
-
-    fn attribute_name(&mut self, name: &[u8]) {
-        self.slot = match (self.in_start_tag, self.element) {
-            (true, Some(element)) => slot(element, name),
-            _ => None,
-        };
-    }
-
-    fn attribute_value(&mut self, value: &[u8]) {
-        let Some(slot) = self.slot.take() else {
+        let Some(slot) = self.element.and_then(|element| slot(element, name)) else {
             return;
         };
         let value = String::from_utf8_lossy(value);
@@ -327,15 +186,8 @@ impl Collector {
         }
     }
 
-    fn close_tag(&mut self, self_closing: bool) {
+    fn close_tag(&mut self) {
         let element = self.element.take();
-        self.in_start_tag = false;
-        self.slot = None;
-        if self_closing && std::mem::take(&mut self.opened_foreign) {
-            // `<svg/>` opened no subtree, so no end tag will leave it.
-            self.foreign_depth -= 1;
-        }
-        self.opened_foreign = false;
         match element {
             Some(Element::Link) => {
                 let hint_only = self.rel.split_ascii_whitespace().any(|token| {
@@ -402,15 +254,6 @@ impl Collector {
         });
     }
 
-    /// Completes a scan whose positions are already one-based lines.
-    #[cfg(feature = "parser-comparison")]
-    fn finish_with_lines(mut self) -> PageScan {
-        for (link, line) in self.scan.links.iter_mut().zip(&self.positions) {
-            link.line = u32::try_from(*line).unwrap_or(u32::MAX);
-        }
-        self.scan
-    }
-
     /// Completes a scan whose positions are byte offsets into `html`.
     fn finish_with_offsets(mut self, html: &[u8]) -> PageScan {
         let mut newlines = memchr::memchr_iter(b'\n', html);
@@ -432,12 +275,11 @@ impl Collector {
     }
 }
 
-/// Decodes character references in an attribute value for backends that
-/// return values as written.
+/// Decodes character references in an attribute value.
 ///
 /// Numeric references and the named references that occur in URLs are
-/// decoded; other named references are kept literally. The tokenizer backends
-/// decode the full WHATWG table instead.
+/// decoded; other named references are kept literally, where a tokenizer
+/// would decode the full WHATWG table.
 fn decode_char_refs(value: &str) -> Cow<'_, str> {
     if !value.contains('&') {
         return Cow::Borrowed(value);

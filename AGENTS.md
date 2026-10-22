@@ -6,10 +6,10 @@ builds, first of all Ardo documentation sites. Project language is US English.
 ## Layout
 
 - `src/check.rs`: the pipeline (walk with ferralk, scan with rayon, check).
-- `src/scan/`: one collector decides what is a link or an anchor; the parser
-  backends only tokenize. Ferroni is the default and the only backend in the
-  default build; html5gum, html5ever, and lol_html sit behind the
-  `parser-comparison` feature for `examples/compare_parsers.rs`.
+- `src/scan/`: two Ferroni regular expressions find tags and attributes
+  (`ferroni.rs`); one collector decides what is a link or an anchor.
+  `docs/parsers.md` records the comparison with the html5gum, html5ever, and
+  lol_html tokenizers that chose it.
 - `src/resolve.rs` and `src/site.rs`: browser URL resolution and static-host
   URL-to-file mapping.
 - `src/deploy.rs`: `versions.json`, `_redirects`, and `vercel.json`.
@@ -19,14 +19,12 @@ builds, first of all Ardo documentation sites. Project language is US English.
 
 ```bash
 cargo fmt --all --check
-cargo clippy --all-targets --locked -- -D warnings
 cargo clippy --all-targets --all-features --locked -- -D warnings
 cargo test --all-features --locked
 ```
 
-A change to what counts as a link must keep every backend in agreement:
-`src/scan/tests.rs` and `tests/cli.rs` compare them. Performance claims need a
-measurement on a real build (`examples/compare_parsers.rs`, `--timings`).
+Performance claims need a measurement on a real build (`--timings`, hyperfine
+on `ferrolink check`); `docs/parsers.md` has the method.
 
 Commits follow Conventional Commits without a scope.
 

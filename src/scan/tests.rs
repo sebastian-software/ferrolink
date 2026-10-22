@@ -1,8 +1,8 @@
-use super::{PageScan, Parser, decode_char_refs, refresh_url, scan, srcset_urls};
+use super::{PageScan, decode_char_refs, refresh_url, scan, srcset_urls};
 
 /// A document exercising every element ferrolink reads and every place a
 /// link-shaped string must be ignored. Each start tag sits on one line so
-/// that line-based and offset-based backends agree.
+/// that the reported lines are unambiguous.
 const DOCUMENT: &str = r##"<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -69,6 +69,10 @@ fn links(scan: &PageScan) -> Vec<(&str, &'static str, u32)> {
         .collect()
 }
 
+fn urls(scan: &PageScan) -> Vec<&str> {
+    scan.links.iter().map(|link| &*link.url).collect()
+}
+
 fn sorted_anchors(scan: &PageScan) -> Vec<&str> {
     let mut anchors: Vec<&str> = scan.anchors.iter().map(|anchor| &**anchor).collect();
     anchors.sort_unstable();
@@ -76,66 +80,46 @@ fn sorted_anchors(scan: &PageScan) -> Vec<&str> {
 }
 
 #[test]
-fn every_backend_extracts_the_same_links_from_well_formed_markup() {
-    for &parser in Parser::ALL {
-        let scan = scan(DOCUMENT.as_bytes(), parser);
-        assert_eq!(links(&scan), expected(), "links from {}", parser.name());
-        assert_eq!(
-            scan.base_href.as_deref(),
-            Some("/base/"),
-            "base from {}",
-            parser.name()
-        );
-    }
+fn extracts_every_link_from_well_formed_markup() {
+    let scan = scan(DOCUMENT.as_bytes());
+    assert_eq!(links(&scan), expected());
+    assert_eq!(scan.base_href.as_deref(), Some("/base/"));
 }
 
 #[test]
-fn tokenizers_decode_every_named_reference() {
-    for &parser in Parser::ALL {
-        let scan = scan(DOCUMENT.as_bytes(), parser);
-        // lol_html returns raw values and the regex backend has no tokenizer,
-        // so both rely on ferrolink's small table, which lacks `&eacute;`.
-        let cafe = match parser.name() {
-            "lol-html" | "ferroni" => "caf&eacute;",
-            _ => "café",
-        };
-        assert_eq!(
-            sorted_anchors(&scan),
-            ["after-svg", cafe, "first", "legacy-anchor", "top-of-page"],
-            "anchors from {}",
-            parser.name()
-        );
-    }
+fn collects_ids_and_anchor_names() {
+    let scan = scan(DOCUMENT.as_bytes());
+    // Only the character references that occur in URLs are decoded; a
+    // tokenizer would turn `&eacute;` into `é`.
+    assert_eq!(
+        sorted_anchors(&scan),
+        [
+            "after-svg",
+            "caf&eacute;",
+            "first",
+            "legacy-anchor",
+            "top-of-page"
+        ]
+    );
 }
 
-#[cfg(feature = "parser-comparison")]
 #[test]
-fn tokenizers_end_attribute_values_where_browsers_do() {
-    // An apostrophe inside an unquoted value is just a character.
+fn resynchronizes_at_the_next_tag_after_a_stray_quote() {
+    // To a browser the apostrophe in an unquoted value is just a character,
+    // and both links count. The regex backend reads it as an unterminated
+    // quoted value, gives up on the tag, and resumes at the next `<`.
     let html = br#"<a title=it's href="/real">x</a><a href="/next">y</a>"#;
-    // The regex backend has no attribute-value states to get this right.
-    for &parser in Parser::ALL
-        .iter()
-        .filter(|parser| parser.name() != "ferroni")
-    {
-        let scan = scan(html, parser);
-        let urls: Vec<&str> = scan.links.iter().map(|link| &*link.url).collect();
-        assert_eq!(urls, ["/real", "/next"], "{}", parser.name());
-    }
+    assert_eq!(urls(&scan(html)), ["/next"]);
 }
 
 #[test]
 fn unterminated_comments_hide_the_rest_of_the_document() {
     let html = b"<a href=\"/before\"></a><!-- open <a href=\"/after\">";
-    for &parser in Parser::ALL {
-        let scan = scan(html, parser);
-        let urls: Vec<&str> = scan.links.iter().map(|link| &*link.url).collect();
-        assert_eq!(urls, ["/before"], "{}", parser.name());
-    }
+    assert_eq!(urls(&scan(html)), ["/before"]);
 }
 
 #[test]
-fn comment_and_raw_text_ends_follow_the_tokenizer() {
+fn comment_and_raw_text_ends_follow_a_tokenizer() {
     let html = concat!(
         r#"<!--><a href="/after-empty-comment"></a>"#,
         r#"<!---><a href="/after-dash-comment"></a>"#,
@@ -144,35 +128,23 @@ fn comment_and_raw_text_ends_follow_the_tokenizer() {
         r#"<script-x src="/custom"></script-x><a href="/after-custom"></a>"#,
         r#"<style>a{}</styles></style><a href="/after-style"></a>"#,
     );
-    for &parser in Parser::ALL {
-        let scan = scan(html.as_bytes(), parser);
-        let urls: Vec<&str> = scan.links.iter().map(|link| &*link.url).collect();
-        assert_eq!(
-            urls,
-            [
-                "/after-empty-comment",
-                "/after-dash-comment",
-                "/after-bang-comment",
-                "/after-script",
-                "/after-custom",
-                "/after-style"
-            ],
-            "{}",
-            parser.name()
-        );
-    }
+    assert_eq!(
+        urls(&scan(html.as_bytes())),
+        [
+            "/after-empty-comment",
+            "/after-dash-comment",
+            "/after-bang-comment",
+            "/after-script",
+            "/after-custom",
+            "/after-style"
+        ]
+    );
 }
 
 #[test]
-fn reports_lines_of_multiline_documents() {
+fn reports_the_line_where_a_tag_starts() {
     let html = b"<p>\n\n<a\n href=\"/x\">\n</p>";
-    for &parser in Parser::ALL {
-        let scan = scan(html, parser);
-        let line = scan.links[0].line;
-        // html5ever reports the line where the tag ends, the others where it
-        // starts.
-        assert!((3..=4).contains(&line), "{}: line {line}", parser.name());
-    }
+    assert_eq!(scan(html).links[0].line, 3);
 }
 
 #[test]

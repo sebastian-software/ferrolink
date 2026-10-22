@@ -14,6 +14,11 @@ Four candidates were measured on the same workload:
 | [lol_html](https://crates.io/crates/lol_html) 3.0 | Cloudflare's streaming rewriter with a CSS selector for the relevant elements | BSD-3-Clause, pulls in MPL-2.0 crates |
 | [Ferroni](https://crates.io/crates/ferroni) 2.5 | Regular expressions over the raw text: one pattern for comments and start tags, a second to split attributes; raw-text elements skipped with `memmem` | BSD-2-Clause |
 
+Only the Ferroni backend ships. The tokenizers, the `parser-comparison`
+feature, `--parser`, and `examples/compare_parsers.rs` were removed rather
+than kept in agreement with a decision already made; the last tree with all
+four backends is commit `87a3b5b`.
+
 ## Workload
 
 The Ardo documentation Pages artifact of 2026-10-22: 335 pages, 10.4 MB of
@@ -22,13 +27,16 @@ M1 Ultra (16 performance and 4 efficiency cores), macOS, Rust 1.99, release
 build. The first round of this comparison ran on the 318-page build of
 2026-10-13 (9.2 MB); a number below that comes from that build says so.
 
-Reproduce with:
+Reproduce at commit `87a3b5b`, the last with every backend:
 
 ```bash
 cargo run --release --features parser-comparison --example compare_parsers -- <build-dir>
 cargo build --release --features parser-comparison
 hyperfine -N --warmup 5 'target/release/ferrolink check <build-dir> --parser ferroni'
 ```
+
+On the current tree, `ferrolink check <build-dir> --timings` prints the scan
+phase and hyperfine times the whole check.
 
 ## Results
 
@@ -166,9 +174,10 @@ and decodes only the character references ferrolink's table knows
 (`decode_char_refs`: numeric references and the eleven named ones that occur
 in URLs). On both Ardo builds every backend reports the same issues.
 
-The tokenizers stay behind the `parser-comparison` feature so the comparison
-can be repeated on other builds, and so a page where the regex backend
-disagrees can be checked against them:
+The tokenizers stayed behind a `parser-comparison` feature for a while and
+were then removed: three more backends to keep in agreement bought nothing
+once the decision was made, and commit `87a3b5b` keeps the comparison
+repeatable. What they offered:
 
 - **html5gum** is a complete WHATWG tokenizer with full character reference
   decoding that follows a browser on malformed markup; a fifth slower on one

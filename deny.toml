@@ -16,15 +16,7 @@ ignore = []
 # Permissive licenses compatible with `MIT OR Apache-2.0` distribution.
 allow = ["Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "MIT", "Unicode-3.0", "Zlib"]
 # Crate-scoped grants that stay narrower than the allow-list above.
-exceptions = [
-    # Servo's CSS selector stack, MPL-2.0, used unmodified. It reaches the
-    # graph only through lol_html in the opt-in `parser-comparison` feature;
-    # the default build and the released binary do not contain it.
-    { crate = "cssparser", allow = ["MPL-2.0"] },
-    { crate = "cssparser-macros", allow = ["MPL-2.0"] },
-    { crate = "dtoa-short", allow = ["MPL-2.0"] },
-    { crate = "selectors", allow = ["MPL-2.0"] },
-]
+exceptions = []
 confidence-threshold = 0.8
 
 [bans]

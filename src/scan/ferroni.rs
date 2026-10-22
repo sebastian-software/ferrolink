@@ -4,8 +4,8 @@
 //! are skipped; a second pattern splits the attributes of the tags that
 //! matter. Raw-text elements (`script`, `style`, …) are recognized by their
 //! start tag's name, and the scan resumes after their end tag. This is the "we
-//! only need the links" approach; where it differs from a WHATWG tokenizer is
-//! what the backend comparison tests measure.
+//! only need the links" approach; `docs/parsers.md` records where it differs
+//! from a WHATWG tokenizer, and why it was chosen anyway.
 //!
 //! The patterns are shaped for a backtracking engine, and each choice was
 //! measured on the Ardo documentation build:
@@ -105,7 +105,7 @@ pub(super) fn scan(html: &[u8]) -> PageScan {
                     }
                 }
             }
-            collector.close_tag(attributes.trim_ascii_end().ends_with(b"/"));
+            collector.close_tag();
             if RAW_TEXT.contains(&name.as_slice()) {
                 base = raw_text_end(html, base + found.end(), &name);
                 continue 'scan;
