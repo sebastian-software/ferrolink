@@ -17,7 +17,7 @@ Four candidates were measured on the same workload:
 Only the Ferroni backend ships. The tokenizers, the `parser-comparison`
 feature, `--parser`, and `examples/compare_parsers.rs` were removed rather
 than kept in agreement with a decision already made; the last tree with all
-four backends is commit `87a3b5b`.
+four backends is commit `cb42b5b`.
 
 ## Workload
 
@@ -27,7 +27,7 @@ M1 Ultra (16 performance and 4 efficiency cores), macOS, Rust 1.99, release
 build. The first round of this comparison ran on the 318-page build of
 2026-10-13 (9.2 MB); a number below that comes from that build says so.
 
-Reproduce at commit `87a3b5b`, the last with every backend:
+Reproduce at commit `cb42b5b`, the last with every backend:
 
 ```bash
 cargo run --release --features parser-comparison --example compare_parsers -- <build-dir>
@@ -176,7 +176,7 @@ in URLs). On both Ardo builds every backend reports the same issues.
 
 The tokenizers stayed behind a `parser-comparison` feature for a while and
 were then removed: three more backends to keep in agreement bought nothing
-once the decision was made, and commit `87a3b5b` keeps the comparison
+once the decision was made, and commit `cb42b5b` keeps the comparison
 repeatable. What they offered:
 
 - **html5gum** is a complete WHATWG tokenizer with full character reference
