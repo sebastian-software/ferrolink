@@ -40,7 +40,7 @@ uses the regex backend as tuned below, on Ferroni 2.5.2.
 
 | Backend | ms | MB/s | Pages differing |
 | --- | ---: | ---: | ---: |
-| Ferroni | 54.8 | 190 | 0 |
+| Ferroni | 50.6 | 206 | 0 |
 | html5gum | 61.1 | 170 | 0 |
 | lol_html | 73.3 | 142 | 0 |
 | html5ever | 129.0 | 81 | 0 |
@@ -55,7 +55,8 @@ With Ferroni 2.3.0 the regex backend and html5gum were level on this build
 [#443](https://github.com/sebastian-software/ferroni/pull/443)). Ferroni's own
 paired measurement of the two corpus steps found about 4% less time; in
 ferrolink's backend, where the patterns run over whole documents through the
-byte APIs, the gain is the 10% above.
+byte APIs, it brought the scan to 54.8 ms. Taking the capture groups out of
+the attribute pattern as well (below) brought it to the 50.6 ms above.
 
 ### End to end, all cores
 
@@ -68,7 +69,7 @@ runs, 20 threads unless noted):
 | Ferroni | 24.8 ms ± 0.8 |
 | lol_html | 30.1 ms ± 1.2 |
 | html5ever | 35.4 ms ± 5.6 |
-| Ferroni, one thread | 89.2 ms ± 8.6 |
+| Ferroni, one thread | 79.7 ms ± 1.7 |
 | html5gum, one thread | 91.6 ms ± 1.0 |
 
 On 20 threads the scan phase takes 7.5 ms with Ferroni and 7.3 ms with
@@ -107,6 +108,13 @@ isolated from ferrolink (one thread, medians of 7 runs):
 With byte APIs instead of `&str` (no UTF-8 validation of the document and of
 every match) and a stricter `id` prefilter, the whole backend went from 108 ms
 to 50.3 ms. About 70% of a pass is now the backtracking matcher itself.
+
+The attribute pattern kept four capture groups, for the name and the
+double-quoted, single-quoted, or bare value, until Ferroni 2.5.2. Slicing name
+and value from a group-free match instead, with `find_iter` as for the markup
+pattern, took the whole backend from 55.5 ms to 50.6 ms on the 335-page build
+(187 to 206 MB/s) in alternating runs where html5gum stayed at 61 ms. The
+last capture path in ferrolink went with it.
 
 ## Ferroni findings
 
@@ -163,7 +171,7 @@ can be repeated on other builds, and so a page where the regex backend
 disagrees can be checked against them:
 
 - **html5gum** is a complete WHATWG tokenizer with full character reference
-  decoding that follows a browser on malformed markup; 10% slower on one
+  decoding that follows a browser on malformed markup; a fifth slower on one
   thread, level on all cores.
 - **lol_html** returns attribute values undecoded and brings four MPL-2.0
   crates through Servo's selector stack.
