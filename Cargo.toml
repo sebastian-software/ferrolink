@@ -7,6 +7,7 @@ description = "Fast, parallel link checker for static HTML builds: cross-page li
 authors = ["Sebastian Software GmbH"]
 license = "Apache-2.0"
 repository = "https://github.com/sebastian-software/ferrolink"
+homepage = "https://github.com/sebastian-software/ferrolink"
 documentation = "https://docs.rs/ferrolink"
 readme = "README.md"
 keywords = ["html", "links", "static-site", "checker", "ferramenta"]

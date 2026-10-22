@@ -46,6 +46,12 @@ ignored, as a browser ignores them. External URLs are counted, not fetched.
 ## Install
 
 ```bash
+cargo install --locked ferrolink
+```
+
+The development version, straight from the repository:
+
+```bash
 cargo install --locked --git https://github.com/sebastian-software/ferrolink
 ```
 
