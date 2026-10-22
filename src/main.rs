@@ -44,8 +44,8 @@ struct CheckArgs {
     exclude: Vec<String>,
 
     /// HTML backend used to scan pages. Builds with the `parser-comparison`
-    /// feature also offer html5ever, lol-html, and ferroni.
-    #[arg(long, value_name = "NAME", default_value = "html5gum", value_parser = parse_parser)]
+    /// feature also offer html5gum, html5ever, and lol-html.
+    #[arg(long, value_name = "NAME", default_value = "ferroni", value_parser = parse_parser)]
     parser: Parser,
 
     /// Output format.

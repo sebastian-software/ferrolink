@@ -7,8 +7,8 @@ builds, first of all Ardo documentation sites. Project language is US English.
 
 - `src/check.rs`: the pipeline (walk with ferralk, scan with rayon, check).
 - `src/scan/`: one collector decides what is a link or an anchor; the parser
-  backends only tokenize. html5gum is the default and the only backend in the
-  default build; html5ever, lol_html, and Ferroni sit behind the
+  backends only tokenize. Ferroni is the default and the only backend in the
+  default build; html5gum, html5ever, and lol_html sit behind the
   `parser-comparison` feature for `examples/compare_parsers.rs`.
 - `src/resolve.rs` and `src/site.rs`: browser URL resolution and static-host
   URL-to-file mapping.
