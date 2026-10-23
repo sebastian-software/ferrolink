@@ -118,6 +118,49 @@ fn deployment_files_can_be_skipped() {
 }
 
 #[test]
+fn targets_assumed_present_are_not_reported() {
+    let issues = json_issues(&["--base", "/docs/", "--assume-present", "v1/**"]);
+    assert!(!issues.iter().any(|(source, ..)| source == "versions.json"));
+    assert_eq!(issues.len(), 6);
+    // A pattern can name the path itself, not only what lies below it.
+    let issues = json_issues(&["--base", "/docs/", "--assume-present", "guide/nope"]);
+    assert!(
+        !issues
+            .iter()
+            .any(|(.., target)| target == "/docs/guide/nope")
+    );
+}
+
+#[test]
+fn anchor_checks_can_be_turned_off() {
+    let issues = json_issues(&["--base", "/docs/", "--no-anchors"]);
+    assert!(
+        !issues
+            .iter()
+            .any(|(_, _, kind, _)| kind == "missing_anchor")
+    );
+    assert_eq!(issues.len(), 6);
+}
+
+#[test]
+fn an_invalid_pattern_exits_with_two() {
+    let output = ferrolink(&[
+        "check",
+        SITE,
+        "--assume-present",
+        "v1/[",
+        "--format",
+        "json",
+    ]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .starts_with("error: invalid assume-present pattern:")
+    );
+}
+
+#[test]
 fn human_output_groups_issues_by_file_and_exits_with_one() {
     let output = ferrolink(&["check", SITE, "--base", "/docs/"]);
     assert_eq!(output.status.code(), Some(1));

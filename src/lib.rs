@@ -8,7 +8,7 @@
 //!
 //! ```no_run
 //! let mut config = ferrolink::Config::new("docs/build/client");
-//! config.base_path = "/ardo/".to_owned();
+//! config.base_path = Some("/ardo/".to_owned());
 //! let report = ferrolink::check(&config)?;
 //! for issue in &report.issues {
 //!     println!("{}:{}: {} {}", issue.source, issue.line, issue.kind.label(), issue.target);

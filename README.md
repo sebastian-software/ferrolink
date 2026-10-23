@@ -70,12 +70,23 @@ ferrolink check dist --site-url https://example.org/docs/
 # Keep checking links into an archived version, but not the links inside it
 ferrolink check docs/build/pages --exclude 'v3/**'
 
+# Accept links to versions that are deployed separately
+ferrolink check docs/build/client --assume-present 'v[345]/**'
+
+# Check links and assets, but not #fragments
+ferrolink check dist --no-anchors
+
 # Machine-readable output for CI annotations
 ferrolink check dist --format json
 ```
 
 The exit code is `0` when every reference resolves, `1` when issues were
 found, and `2` when the check could not run.
+
+`--exclude` and `--assume-present` take globs relative to the build directory.
+`--exclude` skips the links *inside* matching pages; `--assume-present`
+accepts links *to* matching paths, or to the `index.html` a host serves for
+them, without looking for them in the build.
 
 ### How URLs map to files
 
