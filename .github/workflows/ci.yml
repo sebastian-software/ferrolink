@@ -126,10 +126,11 @@ jobs:
           cache: pnpm
           cache-dependency-path: node/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+      # The tests import the package by name, which resolves to dist/, and
+      # both the typed lint rules and the type check read its declarations.
+      - run: pnpm build:ts
       - run: pnpm lint
       - run: pnpm format:check
-      # The tests import the package by name, which resolves to dist/.
-      - run: pnpm build:ts
       - run: pnpm typecheck
 
   native-matrix:
