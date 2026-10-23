@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/sebastian-software/ferrolink/compare/ferrolink-v0.1.0...ferrolink-v0.2.0) (2026-10-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* `Config::base_path` is an `Option<String>` now, and `Config` and `Error` are `#[non_exhaustive]`. Build a `Config` with
+
+### Features
+
+* accept targets assumed present and allow turning anchor checks off ([9c7e91e](https://github.com/sebastian-software/ferrolink/commit/9c7e91e770ffb34d85f7f1f7bdabce92d8e655aa))
+* publish ferrolink to npm with a JavaScript API and a Vite plugin ([631dfbe](https://github.com/sebastian-software/ferrolink/commit/631dfbed8c7b005d2c94fda0bbeaa8c4879b3ab9))
+
 ## 0.1.0 (2026-10-23)
 
 
