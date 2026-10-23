@@ -219,6 +219,18 @@ fn scheme_len(reference: &str) -> Option<usize> {
     None
 }
 
+/// The path of an absolute URL, such as `/docs/` for
+/// `https://example.org/docs/`; `/` when it has none.
+pub(crate) fn url_path(url: &str) -> &str {
+    let Some((_, rest)) = split_absolute(url) else {
+        return "/";
+    };
+    match rest.split(['?', '#']).next() {
+        Some(path) if !path.is_empty() => path,
+        _ => "/",
+    }
+}
+
 /// Splits `scheme://authority/rest` into the authority and everything from the
 /// first `/`, `?`, or `#` on.
 fn split_absolute(url: &str) -> Option<(&str, &str)> {
@@ -276,7 +288,7 @@ fn remove_dot_segments(path: &str) -> Cow<'_, str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{DocumentBase, Resolved, Resolver, remove_dot_segments};
+    use super::{DocumentBase, Resolved, Resolver, remove_dot_segments, url_path};
 
     fn internal(path: &str, fragment: Option<&str>, url: &str) -> Resolved {
         Resolved::Internal {
@@ -413,5 +425,14 @@ mod tests {
         assert_eq!(remove_dot_segments("/a/.."), "/");
         assert_eq!(remove_dot_segments("/../../a"), "/a");
         assert_eq!(remove_dot_segments("/a/b"), "/a/b");
+    }
+
+    #[test]
+    fn takes_the_base_path_from_a_site_url() {
+        assert_eq!(url_path("https://example.org/docs/"), "/docs/");
+        assert_eq!(url_path("https://example.org/docs/?lang=en#top"), "/docs/");
+        assert_eq!(url_path("https://example.org"), "/");
+        assert_eq!(url_path("https://example.org?lang=en"), "/");
+        assert_eq!(url_path("example.org/docs/"), "/");
     }
 }

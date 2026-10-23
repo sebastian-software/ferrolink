@@ -43,6 +43,16 @@ struct CheckArgs {
     #[arg(long, value_name = "GLOB")]
     exclude: Vec<String>,
 
+    /// Glob (relative to DIR) of link targets that count as present although
+    /// the build does not contain them, such as `v5/**` for an archived
+    /// version deployed separately. Repeatable.
+    #[arg(long, value_name = "GLOB")]
+    assume_present: Vec<String>,
+
+    /// Do not check that fragments name an element on the target page.
+    #[arg(long)]
+    no_anchors: bool,
+
     /// Output format.
     #[arg(long, value_enum, default_value_t = Format::Human)]
     format: Format,
@@ -69,19 +79,14 @@ enum Format {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let Command::Check(args) = cli.command;
-    let base_path = args
-        .base
-        .clone()
-        .or_else(|| args.site_url.as_deref().map(url_path))
-        .unwrap_or_else(|| "/".to_owned());
-    let config = Config {
-        root: args.dir.clone(),
-        base_path,
-        site_url: args.site_url.clone(),
-        exclude: args.exclude.clone(),
-        threads: args.jobs,
-        deploy_files: !args.no_deploy_files,
-    };
+    let mut config = Config::new(args.dir);
+    config.base_path = args.base;
+    config.site_url = args.site_url;
+    config.exclude = args.exclude;
+    config.assume_present = args.assume_present;
+    config.anchors = !args.no_anchors;
+    config.threads = args.jobs;
+    config.deploy_files = !args.no_deploy_files;
     let report = match ferrolink::check(&config) {
         Ok(report) => report,
         Err(error) => {
@@ -110,18 +115,6 @@ fn main() -> ExitCode {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
-    }
-}
-
-/// The path of an absolute URL, `/` when it has none.
-fn url_path(url: &str) -> String {
-    let after_scheme = url.split_once("://").map_or(url, |(_, rest)| rest);
-    match after_scheme.find('/') {
-        Some(slash) => {
-            let path = &after_scheme[slash..];
-            path.split(['?', '#']).next().unwrap_or("/").to_owned()
-        }
-        None => "/".to_owned(),
     }
 }
 

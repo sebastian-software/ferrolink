@@ -15,17 +15,22 @@ use rustc_hash::FxHashMap;
 
 use crate::deploy;
 use crate::report::{Issue, IssueKind, Report, Summary, Timings};
-use crate::resolve::{DocumentBase, Resolved, Resolver};
+use crate::resolve::{DocumentBase, Resolved, Resolver, url_path};
 use crate::scan::{self, PageScan, RawLink};
 use crate::site::Site;
 
 /// What to check and how.
+///
+/// New options can arrive in any release, so a `Config` starts from
+/// [`Config::new`] and sets the fields it needs.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct Config {
     /// The build output directory, such as `docs/build/client`.
     pub root: PathBuf,
-    /// The URL path the root is served under, such as `/` or `/ardo/`.
-    pub base_path: String,
+    /// The URL path the root is served under, such as `/` or `/ardo/`. When
+    /// unset, the path of `site_url`, else `/`.
+    pub base_path: Option<String>,
     /// The public URL of the site. Absolute URLs to its host are checked like
     /// paths; without it, every absolute URL counts as external.
     pub site_url: Option<String>,
@@ -33,6 +38,14 @@ pub struct Config {
     /// checked. Matching pages are still scanned, so links into them keep
     /// their anchor checks.
     pub exclude: Vec<String>,
+    /// Glob patterns, relative to the root, of link targets that count as
+    /// present although the build does not contain them, such as `v5/**` for
+    /// an archived version that is deployed separately. A pattern matches the
+    /// target path or the `index.html` a host serves for it. Fragments into
+    /// these targets are not checked.
+    pub assume_present: Vec<String>,
+    /// Whether a fragment must name an element on the target page.
+    pub anchors: bool,
     /// Worker threads; the number of CPUs when unset.
     pub threads: Option<NonZeroUsize>,
     /// Whether to check `versions.json`, `_redirects`, and `vercel.json`.
@@ -40,14 +53,17 @@ pub struct Config {
 }
 
 impl Config {
-    /// Defaults for a site served from `/` at `root`.
+    /// Defaults for a site at `root`: served from `/` unless a site URL says
+    /// otherwise, with anchors and deployment files checked.
     #[must_use]
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self {
             root: root.into(),
-            base_path: "/".to_owned(),
+            base_path: None,
             site_url: None,
             exclude: Vec::new(),
+            assume_present: Vec::new(),
+            anchors: true,
             threads: None,
             deploy_files: true,
         }
@@ -56,13 +72,16 @@ impl Config {
 
 /// Why a check could not run to completion.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Error {
     /// The root is missing or not a directory.
     Root(PathBuf, io::Error),
     /// Walking the build failed.
     Walk(String),
-    /// An `--exclude` pattern does not compile.
+    /// An `exclude` pattern does not compile.
     Exclude(PatternSetError),
+    /// An `assume_present` pattern does not compile.
+    AssumePresent(PatternSetError),
     /// A file could not be read.
     Read(PathBuf, io::Error),
     /// The worker pool could not be started.
@@ -75,6 +94,7 @@ impl fmt::Display for Error {
             Error::Root(path, error) => write!(f, "cannot check {}: {error}", path.display()),
             Error::Walk(message) => write!(f, "cannot walk the site: {message}"),
             Error::Exclude(error) => write!(f, "invalid exclude pattern: {error}"),
+            Error::AssumePresent(error) => write!(f, "invalid assume-present pattern: {error}"),
             Error::Read(path, error) => write!(f, "cannot read {}: {error}", path.display()),
             Error::Threads(error) => write!(f, "cannot start worker threads: {error}"),
         }
@@ -85,7 +105,7 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Error::Root(_, error) | Error::Read(_, error) => Some(error),
-            Error::Exclude(error) => Some(error),
+            Error::Exclude(error) | Error::AssumePresent(error) => Some(error),
             Error::Threads(error) => Some(error),
             Error::Walk(_) => None,
         }
@@ -106,11 +126,8 @@ pub fn check(config: &Config) -> Result<Report, Error> {
         let error = io::Error::new(io::ErrorKind::NotADirectory, "not a directory");
         return Err(Error::Root(config.root.clone(), error));
     }
-    let exclude = if config.exclude.is_empty() {
-        None
-    } else {
-        Some(PatternSet::new(&config.exclude, PatternOptions::walker()).map_err(Error::Exclude)?)
-    };
+    let exclude = patterns(&config.exclude).map_err(Error::Exclude)?;
+    let assume_present = patterns(&config.assume_present).map_err(Error::AssumePresent)?;
     let threads = config.threads.map_or_else(
         || std::thread::available_parallelism().map_or(1, NonZeroUsize::get),
         NonZeroUsize::get,
@@ -119,7 +136,14 @@ pub fn check(config: &Config) -> Result<Report, Error> {
         .num_threads(threads)
         .build()
         .map_err(Error::Threads)?;
-    pool.install(|| run(config, exclude.as_ref(), threads))
+    pool.install(|| run(config, exclude.as_ref(), assume_present.as_ref(), threads))
+}
+
+fn patterns(globs: &[String]) -> Result<Option<PatternSet>, PatternSetError> {
+    if globs.is_empty() {
+        return Ok(None);
+    }
+    PatternSet::new(globs, PatternOptions::walker()).map(Some)
 }
 
 struct Page {
@@ -128,7 +152,12 @@ struct Page {
     checked: bool,
 }
 
-fn run(config: &Config, exclude: Option<&PatternSet>, threads: usize) -> Result<Report, Error> {
+fn run(
+    config: &Config,
+    exclude: Option<&PatternSet>,
+    assume_present: Option<&PatternSet>,
+    threads: usize,
+) -> Result<Report, Error> {
     let started = Instant::now();
     let walk = Walker::new(&config.root)
         .match_hidden(true)
@@ -171,7 +200,12 @@ fn run(config: &Config, exclude: Option<&PatternSet>, threads: usize) -> Result<
         .collect::<Result<Vec<PageScan>, Error>>()?;
     let scan_done = Instant::now();
 
-    let resolver = Resolver::new(&config.base_path, config.site_url.as_deref());
+    let base_path = config
+        .base_path
+        .as_deref()
+        .or_else(|| config.site_url.as_deref().map(url_path))
+        .unwrap_or("/");
+    let resolver = Resolver::new(base_path, config.site_url.as_deref());
     let page_index: FxHashMap<&str, usize> = pages
         .iter()
         .enumerate()
@@ -182,6 +216,8 @@ fn run(config: &Config, exclude: Option<&PatternSet>, threads: usize) -> Result<
         resolver: &resolver,
         scans: &scans,
         page_index: &page_index,
+        assume_present,
+        anchors: config.anchors,
     };
     let mut outcome = pages
         .par_iter()
@@ -232,6 +268,8 @@ struct Checker<'a> {
     resolver: &'a Resolver,
     scans: &'a [PageScan],
     page_index: &'a FxHashMap<&'a str, usize>,
+    assume_present: Option<&'a PatternSet>,
+    anchors: bool,
 }
 
 #[derive(Default)]
@@ -278,10 +316,12 @@ impl Checker<'_> {
                 } => {
                     outcome.internal += 1;
                     let Some(file) = self.site.serve(&path) else {
-                        outcome.issues.push(issue(IssueKind::BrokenLink, url));
+                        if !self.is_assumed_present(&path) {
+                            outcome.issues.push(issue(IssueKind::BrokenLink, url));
+                        }
                         continue;
                     };
-                    let Some(fragment) = fragment else {
+                    let Some(fragment) = fragment.filter(|_| self.anchors) else {
                         continue;
                     };
                     let Some(&target) = self.page_index.get(file) else {
@@ -298,6 +338,21 @@ impl Checker<'_> {
             }
         }
         outcome
+    }
+
+    /// Whether an `assume_present` pattern matches the site-relative `path`,
+    /// or the `index.html` a host serves for it.
+    fn is_assumed_present(&self, path: &str) -> bool {
+        let Some(set) = self.assume_present else {
+            return false;
+        };
+        let directory = path.trim_end_matches('/');
+        let index = if directory.is_empty() {
+            "index.html".to_owned()
+        } else {
+            format!("{directory}/index.html")
+        };
+        set.is_match_glob_path(path) || set.is_match_glob_path(index)
     }
 }
 
