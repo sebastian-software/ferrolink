@@ -10,6 +10,11 @@
 # the publish workflow for each package. The first release then goes out from
 # CI, with provenance and without a token.
 #
+# It works in two passes. The first publishes every missing placeholder. npm
+# processes a new package for a few minutes before anything else can see it,
+# so the second pass waits for each package before it deprecates the
+# placeholder and configures the trust.
+#
 # The packages are `ferrolink` and one `@ferrolink/<platform>` per napi target
 # in node/package.json. A package that already exists is not published again,
 # and one whose trust is configured is left alone, so the script can be
@@ -48,16 +53,31 @@ run() {
   fi
 }
 
-# A version just published can take a moment to show up for other commands.
+# Runs a command that can fail while npm still processes a new package, for
+# up to five minutes.
 retry() {
   local attempt
-  for attempt in 1 2 3 4 5; do
+  for attempt in $(seq 1 20); do
     if "$@"; then
       return 0
     fi
-    echo "  retrying in 5 seconds ($attempt of 5 failed)"
-    sleep 5
+    echo "  retrying in 15 seconds ($attempt of 20 failed)"
+    sleep 15
   done
+  return 1
+}
+
+# Waits up to ten minutes until npm serves the placeholder of a new package.
+wait_until_processed() {
+  local attempt
+  for attempt in $(seq 1 40); do
+    if [[ "$(npm view "$1@$placeholder" version 2>/dev/null)" == "$placeholder" ]]; then
+      return 0
+    fi
+    echo "  npm is still processing $1; checking again in 15 seconds"
+    sleep 15
+  done
+  echo "  npm has not made $1 available after ten minutes; run the script again later." >&2
   return 1
 }
 
@@ -108,21 +128,23 @@ trap 'rm -rf "$staging"' EXIT
 
 published=0
 trusted=0
+touch "$staging/fresh"
 
-# The list comes in on descriptor 3, so npm keeps the terminal as its stdin:
-# without one, it cannot wait for the browser login that 2FA asks for and
-# fails with EOTP.
+# Both passes read the list from descriptor 3, so npm keeps the terminal as
+# its stdin: without one, it cannot wait for the browser login that 2FA asks
+# for and fails with EOTP.
+
+echo
+echo "Publishing placeholders"
 while IFS= read -r name <&3; do
-  echo
-  echo "==> $name"
-
-  fresh=false
   if npm view "$name" name >/dev/null 2>&1; then
-    echo "  already on npm"
-  else
-    dir="$staging/${name//\//-}"
-    mkdir -p "$dir"
-    cat >"$dir/package.json" <<EOF
+    echo "  $name: already on npm"
+    continue
+  fi
+  echo "  $name"
+  dir="$staging/${name//\//-}"
+  mkdir -p "$dir"
+  cat >"$dir/package.json" <<EOF
 {
   "name": "$name",
   "version": "$placeholder",
@@ -135,15 +157,27 @@ while IFS= read -r name <&3; do
   }
 }
 EOF
-    cat >"$dir/README.md" <<EOF
+  cat >"$dir/README.md" <<EOF
 # $name
 
 A placeholder that reserves this name until ferrolink's first release.
 See https://github.com/$repository.
 EOF
-    (cd "$dir" && run npm publish --access public)
+  (cd "$dir" && run npm publish --access public)
+  echo "$name" >>"$staging/fresh"
+  published=$((published + 1))
+done 3<<<"$packages"
+
+echo
+echo "Deprecating placeholders and trusting $workflow"
+while IFS= read -r name <&3; do
+  echo
+  echo "==> $name"
+
+  fresh=false
+  if grep -qxF "$name" "$staging/fresh"; then
     fresh=true
-    published=$((published + 1))
+    $dry_run || wait_until_processed "$name"
   fi
 
   if $fresh || undeprecated_placeholder "$name"; then
@@ -158,7 +192,11 @@ EOF
   if ! $dry_run && [[ "$(npm trust list "$name" 2>/dev/null || true)" == *"$workflow"* ]]; then
     echo "  already trusts $workflow"
   else
-    run npm trust github "$name" --repository "$repository" --file "$workflow" --allow-publish --yes
+    if $dry_run; then
+      run npm trust github "$name" --repository "$repository" --file "$workflow" --allow-publish --yes
+    else
+      retry npm trust github "$name" --repository "$repository" --file "$workflow" --allow-publish --yes
+    fi
     trusted=$((trusted + 1))
     # npm asks for a 2-second pause between trust calls to avoid rate limits.
     $dry_run || sleep 2
