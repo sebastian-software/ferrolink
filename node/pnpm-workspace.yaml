@@ -1,0 +1,5 @@
+# pnpm 11 and later fail the install on dependency build scripts that are not
+# listed here. unrs-resolver's script only downloads a prebuilt binary that the
+# optional platform package already provides.
+allowBuilds:
+  unrs-resolver: false

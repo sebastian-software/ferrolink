@@ -1,18 +1,18 @@
 [package]
 name = "ferrolink"
 version = "0.1.0"
-edition = "2024"
-rust-version = "1.96"
+edition.workspace = true
+rust-version.workspace = true
 description = "Fast, parallel link checker for static HTML builds: cross-page links, anchors, and assets."
-authors = ["Sebastian Software GmbH"]
-license = "Apache-2.0"
-repository = "https://github.com/sebastian-software/ferrolink"
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 homepage = "https://github.com/sebastian-software/ferrolink"
 documentation = "https://docs.rs/ferrolink"
 readme = "README.md"
 keywords = ["html", "links", "static-site", "checker", "ferramenta"]
 categories = ["command-line-utilities", "development-tools", "web-programming"]
-exclude = [".github/", "docs/"]
+exclude = [".github/", "docs/", "node/"]
 
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
@@ -32,6 +32,25 @@ tempfile = "3.27.0"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
-[lints.rust]
-unsafe_code = "forbid"
+[lints]
+workspace = true
+
+# The npm package's native binding lives in `node/native`. Release Please's
+# `rust` strategy moves every listed member to the product version, so the
+# member keeps a concrete `version` rather than inheriting one.
+[workspace]
+members = ["node/native"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.96"
+authors = ["Sebastian Software GmbH"]
+license = "Apache-2.0"
+repository = "https://github.com/sebastian-software/ferrolink"
+
+[workspace.lints.rust]
+# `deny` rather than `forbid`: the napi-derive expansions in `node/native`
+# allow unsafe code locally, which `forbid` rejects. No hand-written code
+# needs it.
+unsafe_code = "deny"
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)"] }

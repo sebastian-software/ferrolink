@@ -16,8 +16,9 @@
 //! # Ok::<(), ferrolink::Error>(())
 //! ```
 //!
-//! The library exists for the CLI and its tests; its API may change in any
-//! minor release before 1.0.
+//! The library exists for the CLI, the npm package's binding, and their
+//! tests; its API may change in any minor release before 1.0. The npm
+//! package's JavaScript API is the supported programmatic interface.
 
 mod check;
 mod deploy;

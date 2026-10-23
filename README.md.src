@@ -16,7 +16,9 @@ server and no network.
 
 It was built to gate releases and deployments of
 [Ardo](https://github.com/sebastian-software/ardo) documentation sites, and
-works on the output of any static site generator.
+works on the output of any static site generator. It ships as a command-line
+tool on crates.io and as an npm package with prebuilt native binaries, a
+JavaScript API, and a Vite plugin.
 
 ```console
 $ ferrolink check docs/build/pages --exclude 'v[345]/**'
@@ -45,6 +47,8 @@ ignored, as a browser ignores them. External URLs are counted, not fetched.
 
 ## Install
 
+The command-line tool:
+
 ```bash
 cargo install --locked ferrolink
 ```
@@ -54,6 +58,16 @@ The development version, straight from the repository:
 ```bash
 cargo install --locked --git https://github.com/sebastian-software/ferrolink
 ```
+
+For Node.js and Vite, without a Rust toolchain:
+
+```bash
+npm install --save-dev ferrolink
+```
+
+The npm package brings a prebuilt binary for macOS (arm64, x64), Linux
+(arm64, x64; glibc and musl), and Windows (arm64, x64). It needs Node.js
+20.19+ or 22.12+, as Vite 7 does.
 
 ## Usage
 
@@ -95,6 +109,59 @@ static servers share. A path ending in `/` serves its `index.html`. Otherwise
 the exact file wins, then `<path>.html`, then `<path>/index.html`. Lookups are
 case-sensitive, as on those hosts, even on a case-insensitive local disk.
 
+## Node.js
+
+```ts
+import { check } from "ferrolink"
+
+const report = await check({
+  root: "dist",
+  siteUrl: "https://example.org/docs/",
+  exclude: ["v3/**"],
+})
+for (const issue of report.issues) {
+  console.log(`${issue.source}:${issue.line} ${issue.kind} ${issue.href}`)
+}
+```
+
+`check()` takes the options of the command line in camel case (`basePath`,
+`siteUrl`, `exclude`, `assumePresent`, `anchors`, `deployFiles`, `threads`)
+and resolves with the report `--format json` prints: `summary`, `issues`, and
+`timings`. It runs on a worker thread, so the event loop stays free, and
+rejects only when the check cannot run. Broken links are issues in the report.
+
+### Vite
+
+```ts
+// vite.config.ts
+import { defineConfig } from "vite"
+import ferrolink from "ferrolink/vite"
+
+export default defineConfig({
+  plugins: [ferrolink({ siteUrl: "https://example.org/" })],
+})
+```
+
+The plugin checks the client build output once the build is complete and
+fails the build when it finds issues; `level: "warn"` logs them instead. It
+takes the options of `check()` except `root`, plus `dir` to check another
+directory than the client `build.outDir`. `basePath` defaults to Vite's
+`base`. In an app build, where frameworks such as Ardo render their HTML in
+`buildApp`, the check runs after every other `buildApp` hook, so it sees the
+rendered pages. The plugin works with Vite 7 and 8.
+
+### API stability
+
+The JavaScript API is the supported way to use ferrolink from code. `check()`,
+the fields of its options and of the report, the issue kinds, and the
+`ferrolink/vite` plugin with its options follow semantic versioning: before
+1.0, a breaking change only comes with a new minor version (0.x.0) and is
+called out in the changelog. New options, report fields, and issue kinds can
+arrive in any minor version; treat an issue kind you do not know as an issue.
+The values of `timings` and `origin`, error messages, and log output are not
+part of the contract. The Rust library API serves the CLI and the npm binding
+and can change in any minor release before 1.0.
+
 ## Performance
 
 On the 318-page Ardo documentation build (9.2 MB of HTML, 1,087 files), a full
@@ -112,9 +179,18 @@ html5gum, html5ever, and lol_html tokenizers on the same workload.
 
 ```bash
 cargo fmt --all --check
-cargo clippy --all-targets --all-features --locked -- -D warnings
-cargo test --all-features --locked
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo test --workspace --all-features --locked
 cargo run --release -- check path/to/build
+```
+
+The npm package lives in `node/`, with the napi-rs binding in `node/native/`:
+
+```bash
+cd node
+pnpm install
+pnpm build
+pnpm test
 ```
 
 ## Maintaining this README
