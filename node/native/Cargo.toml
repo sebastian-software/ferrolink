@@ -1,6 +1,6 @@
 [package]
 name = "ferrolink-node"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "Node.js binding of ferrolink, published to npm as `ferrolink`."
@@ -13,7 +13,7 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-ferrolink = { version = "0.1.0", path = "../.." }
+ferrolink = { version = "0.2.0", path = "../.." }
 napi = "3.15.0"
 napi-derive = "3.6.13"
 
