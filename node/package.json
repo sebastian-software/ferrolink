@@ -1,0 +1,92 @@
+{
+  "name": "ferrolink",
+  "version": "0.1.0",
+  "description": "Fast, parallel link checker for static HTML builds: cross-page links, anchors, and assets. Native, with a Vite plugin.",
+  "keywords": [
+    "anchors",
+    "broken-links",
+    "html",
+    "link-checker",
+    "napi",
+    "static-site",
+    "vite-plugin"
+  ],
+  "homepage": "https://github.com/sebastian-software/ferrolink/tree/main/node#readme",
+  "bugs": {
+    "url": "https://github.com/sebastian-software/ferrolink/issues"
+  },
+  "license": "Apache-2.0",
+  "author": "Sebastian Software GmbH",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sebastian-software/ferrolink.git",
+    "directory": "node"
+  },
+  "files": [
+    "dist/*.d.ts",
+    "dist/*.js",
+    "LICENSE"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "default": "./dist/vite.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "pnpm build:native && pnpm build:ts",
+    "build:native": "node scripts/build-native.ts",
+    "build:ts": "tsc -p tsconfig.build.json",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint --config oxlint.config.ts . && eslint .",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.10.9",
+    "@sebastian-software/standards": "0.13.0",
+    "@types/node": "^24.19.2",
+    "eslint": "^10.13.0",
+    "eslint-config-setup": "^0.5.2",
+    "jiti": "^2.7.0",
+    "oxfmt": "^0.74.0",
+    "oxlint": "^1.89.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.5"
+  },
+  "peerDependencies": {
+    "vite": "^7.0.0 || ^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
+  },
+  "napi": {
+    "binaryName": "ferrolink",
+    "targets": [
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-musl",
+      "x86_64-unknown-linux-musl",
+      "aarch64-pc-windows-msvc",
+      "x86_64-pc-windows-msvc"
+    ]
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "packageManager": "pnpm@12.11.2"
+}

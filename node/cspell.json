@@ -1,0 +1,22 @@
+{
+  "version": "0.2",
+  "ignorePaths": [".standards/"],
+  "words": [
+    "Ardo",
+    "ferrolink",
+    "forgejo",
+    "glibc",
+    "libc",
+    "lockfile",
+    "msvc",
+    "musl",
+    "napi",
+    "oxfmt",
+    "oxlint",
+    "pnpm",
+    "prerender",
+    "prerendering",
+    "prerenders",
+    "repometa"
+  ]
+}
