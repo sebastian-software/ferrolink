@@ -97,10 +97,13 @@ ferrolink check dist --format json
 The exit code is `0` when every reference resolves, `1` when issues were
 found, and `2` when the check could not run.
 
-`--exclude` and `--assume-present` take globs relative to the build directory.
 `--exclude` skips the links *inside* matching pages; `--assume-present`
 accepts links *to* matching paths, or to the `index.html` a host serves for
-them, without looking for them in the build.
+them, without looking for them in the build or checking their anchors. Both
+take globs relative to the build directory. An `--assume-present` glob with a
+leading `/` matches the absolute URL path instead, base path included, and so
+also covers paths outside the base, such as `/blog/**` for another app on the
+same host.
 
 ### How URLs map to files
 
@@ -129,6 +132,8 @@ for (const issue of report.issues) {
 and resolves with the report `--format json` prints: `summary`, `issues`, and
 `timings`. It runs on a worker thread, so the event loop stays free, and
 rejects only when the check cannot run. Broken links are issues in the report.
+`formatIssues(report.issues)` renders them the way the command line prints
+them, grouped by file.
 
 ### Vite
 
@@ -153,13 +158,13 @@ rendered pages. The plugin works with Vite 7 and 8.
 ### API stability
 
 The JavaScript API is the supported way to use ferrolink from code. `check()`,
-the fields of its options and of the report, the issue kinds, and the
-`ferrolink/vite` plugin with its options follow semantic versioning: before
+`formatIssues()`, the fields of the options and of the report, the issue kinds,
+and the `ferrolink/vite` plugin with its options follow semantic versioning: before
 1.0, a breaking change only comes with a new minor version (0.x.0) and is
 called out in the changelog. New options, report fields, and issue kinds can
 arrive in any minor version; treat an issue kind you do not know as an issue.
-The values of `timings` and `origin`, error messages, and log output are not
-part of the contract. The Rust library API serves the CLI and the npm binding
+The values of `timings` and `origin`, error messages, and the text of log
+output and of `formatIssues()` are not part of the contract. The Rust library API serves the CLI and the npm binding
 and can change in any minor release before 1.0.
 
 ## Performance

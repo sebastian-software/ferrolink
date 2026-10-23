@@ -132,6 +132,32 @@ fn targets_assumed_present_are_not_reported() {
 }
 
 #[test]
+fn absolute_patterns_cover_targets_inside_and_outside_the_base() {
+    let issues = json_issues(&[
+        "--base",
+        "/docs/",
+        "--assume-present",
+        "/docs/v1/**",
+        "--assume-present",
+        "/guide/**",
+    ]);
+    assert!(!issues.iter().any(|(source, ..)| source == "versions.json"));
+    assert!(!issues.iter().any(|(_, _, kind, _)| kind == "outside_base"));
+    assert_eq!(issues.len(), 5);
+}
+
+#[test]
+fn targets_assumed_present_skip_their_anchor_check() {
+    let issues = json_issues(&["--base", "/docs/", "--assume-present", "guide/setup"]);
+    assert!(
+        !issues
+            .iter()
+            .any(|(_, _, kind, _)| kind == "missing_anchor")
+    );
+    assert_eq!(issues.len(), 6);
+}
+
+#[test]
 fn anchor_checks_can_be_turned_off() {
     let issues = json_issues(&["--base", "/docs/", "--no-anchors"]);
     assert!(
