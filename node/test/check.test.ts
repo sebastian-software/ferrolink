@@ -1,7 +1,7 @@
 // The JavaScript API against the built addon, on the same fixture site as
 // the CLI tests in tests/cli.rs.
 
-import { check, type Issue } from "ferrolink";
+import { check, formatIssues, type Issue } from "ferrolink";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -68,6 +68,23 @@ describe("check", () => {
     assert.equal(report.issues.length, 6);
   });
 
+  test("matches absolute globs inside and outside the base path", async () => {
+    const report = await check({
+      root: site,
+      basePath: "/docs/",
+      assumePresent: ["/docs/v1/**", "/guide/**"],
+    });
+    assert.ok(!report.issues.some((issue) => issue.source === "versions.json"));
+    assert.ok(!report.issues.some((issue) => issue.kind === "outside_base"));
+    assert.equal(report.issues.length, 5);
+  });
+
+  test("skips the anchor check of a target assumed present", async () => {
+    const report = await check({ root: site, basePath: "/docs/", assumePresent: ["guide/setup"] });
+    assert.ok(!report.issues.some((issue) => issue.kind === "missing_anchor"));
+    assert.equal(report.issues.length, 6);
+  });
+
   test("skips anchors and deployment files on request", async () => {
     const report = await check({
       root: site,
@@ -113,5 +130,25 @@ describe("platformId", () => {
     assert.equal(platformId("linux", "x64", false), "linux-x64-gnu");
     assert.equal(platformId("linux", "arm64", true), "linux-arm64-musl");
     assert.equal(platformId("win32", "x64", false), "win32-x64-msvc");
+  });
+});
+
+describe("formatIssues", () => {
+  test("prints issues the way the command line does", async () => {
+    const report = await check({ root: site, basePath: "/docs/" });
+    const text = formatIssues(report.issues);
+    // The same lines tests/cli.rs expects from `ferrolink check`.
+    assert.ok(
+      text.includes(
+        "index.html\n  line 13    missing anchor  guide/setup#missing → /docs/guide/setup#missing\n",
+      ),
+      text,
+    );
+    assert.ok(text.includes("  line 15    outside base    /guide/setup\n"), text);
+    assert.ok(
+      text.startsWith("_redirects\n  line 2     broken link     /docs/removed/\n\narchive/"),
+      text,
+    );
+    assert.equal(formatIssues([]), "");
   });
 });
