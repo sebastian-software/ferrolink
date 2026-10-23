@@ -65,16 +65,16 @@ thread and spreads over every CPU, so the event loop stays free. The promise
 rejects only when the check cannot run (missing directory, unreadable page,
 invalid glob); broken links are issues in the report.
 
-| Option          | Default                       | Meaning                                                                                                       |
-| --------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `root`          | required                      | The build output directory                                                                                    |
-| `basePath`      | the path of `siteUrl`, or `/` | The URL path the directory is served under, such as `/ardo/`                                                  |
-| `siteUrl`       | none                          | The public URL; absolute links to its host are checked like paths                                             |
-| `exclude`       | `[]`                          | Globs, relative to `root`, of pages whose own links are not checked                                           |
-| `assumePresent` | `[]`                          | Globs, relative to `root`, of link targets that count as present though the build lacks them, such as `v5/**` |
-| `anchors`       | `true`                        | Whether a `#fragment` must name an element on the target page                                                 |
-| `deployFiles`   | `true`                        | Whether to check `versions.json`, `_redirects`, and `vercel.json`                                             |
-| `threads`       | the number of CPUs            | Worker threads                                                                                                |
+| Option          | Default                       | Meaning                                                                                                   |
+| --------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `root`          | required                      | The build output directory                                                                                |
+| `basePath`      | the path of `siteUrl`, or `/` | The URL path the directory is served under, such as `/ardo/`                                              |
+| `siteUrl`       | none                          | The public URL; absolute links to its host are checked like paths                                         |
+| `exclude`       | `[]`                          | Globs, relative to `root`, of pages whose own links are not checked                                       |
+| `assumePresent` | `[]`                          | Globs of link targets that count as present, such as `v5/**`; a leading `/` matches the absolute URL path |
+| `anchors`       | `true`                        | Whether a `#fragment` must name an element on the target page                                             |
+| `deployFiles`   | `true`                        | Whether to check `versions.json`, `_redirects`, and `vercel.json`                                         |
+| `threads`       | the number of CPUs            | Worker threads                                                                                            |
 
 The report has three parts:
 
@@ -84,6 +84,27 @@ The report has three parts:
 - `summary`: `pages`, `checkedPages`, `files`, `internalLinks`,
   `externalLinks`, `skippedLinks`, `issues`, and the effective `basePath`.
 - `timings`: `walkMs`, `scanMs`, and `checkMs`.
+
+`assumePresent` suits archived versions that are deployed separately, or
+generated pages another tool adds later. A glob relative to `root` matches the
+target path or the `index.html` a host serves for it. A glob with a leading
+`/` matches the absolute URL path, base path included, and also covers targets
+outside the base path, such as `/blog/**` for another app on the same host. A
+matching target is reported neither as missing nor for a missing fragment.
+
+`formatIssues(issues)` renders issues the way the command line prints them:
+
+```ts
+import { check, formatIssues } from "ferrolink";
+
+const report = await check({ root: "dist" });
+if (report.issues.length > 0) console.error(formatIssues(report.issues));
+```
+
+```text
+guide/index.html
+  line 17    broken link     storybook → /storybook
+```
 
 The types ship with the package.
 
@@ -109,13 +130,14 @@ message naming the package it needs. Node.js 20.19+ or 22.12+ is required.
 
 ## API stability
 
-`check()`, the fields of its options and of the report, the issue kinds, and
-the `ferrolink/vite` plugin with its options follow semantic versioning:
+`check()`, `formatIssues()`, the fields of the options and of the report, the
+issue kinds, and the `ferrolink/vite` plugin with its options follow semantic
+versioning:
 before 1.0, a breaking change only comes with a new minor version (0.x.0) and
 is called out in the changelog. New options, report fields, and issue kinds
 can arrive in any minor version; treat an issue kind you do not know as an
-issue. The values of `timings` and `origin`, error messages, and log output
-are not part of the contract.
+issue. The values of `timings` and `origin`, error messages, and the text of
+log output and of `formatIssues()` are not part of the contract.
 
 ## More
 

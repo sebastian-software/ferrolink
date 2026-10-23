@@ -17,7 +17,7 @@ import type { BuildEnvironment, Plugin, ResolvedConfig } from "vite";
 
 import path from "node:path";
 
-import { check, type CheckOptions, type Issue, type Report } from "./index.js";
+import { check, type CheckOptions, formatIssues, type Report } from "./index.js";
 
 /** Options of the ferrolink Vite plugin: the check options without `root`, and how to react. */
 export type FerrolinkPluginOptions = {
@@ -123,32 +123,9 @@ function describe(report: Report, dir: string): string {
   const counts = `${plural(summary.pages, "page")}, ${plural(summary.internalLinks, "internal link")} in ${dir}`;
   if (summary.issues === 0) return `[ferrolink] No issues (${counts})`;
   const files = new Set(report.issues.map((issue) => issue.source)).size;
-  return `[ferrolink] ${plural(summary.issues, "issue")} in ${plural(files, "file")} (${counts}):\n${format(report.issues)}`;
+  return `[ferrolink] ${plural(summary.issues, "issue")} in ${plural(files, "file")} (${counts}):\n${formatIssues(report.issues)}`;
 }
 
 function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
-}
-
-const labels: Record<string, string> = {
-  broken_link: "broken link",
-  missing_anchor: "missing anchor",
-  outside_base: "outside base",
-};
-
-function format(issues: Issue[]): string {
-  const lines: string[] = [];
-  let source: string | undefined;
-  for (const issue of issues) {
-    if (issue.source !== source) {
-      source = issue.source;
-      lines.push(source);
-    }
-    const location = issue.line === 0 ? "" : `line ${issue.line}`;
-    const target = issue.target === issue.href ? "" : ` → ${issue.target}`;
-    lines.push(
-      `  ${location.padEnd(10)} ${(labels[issue.kind] ?? issue.kind).padEnd(15)} ${issue.href}${target}`,
-    );
-  }
-  return lines.join("\n");
 }

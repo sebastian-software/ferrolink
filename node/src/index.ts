@@ -37,11 +37,13 @@ export type CheckOptions = {
    */
   exclude?: string[];
   /**
-   * Globs, relative to `root`, of link targets that count as present although
-   * the build does not contain them, such as `v5/**` for an archived version
-   * that is deployed separately. A glob matches the target path or the
-   * `index.html` a host serves for it. Fragments into these targets are not
-   * checked.
+   * Globs of link targets that count as present, such as `v5/**` for an
+   * archived version that is deployed separately. A glob with a leading `/`
+   * matches the absolute URL path, base path included, and also covers
+   * targets outside the base path, such as `/blog/**` for another app on the
+   * same host; any other glob is relative to `root`. A glob matches the target
+   * path or the `index.html` a host serves for it. A matching target is
+   * reported neither as missing nor for a missing fragment.
    */
   assumePresent?: string[];
   /** Whether a `#fragment` must name an element on the target page. Default `true`. */
@@ -130,4 +132,40 @@ export type Report = {
  */
 export async function check(options: CheckOptions): Promise<Report> {
   return loadBinding().check(options);
+}
+
+const labels: Record<string, string> = {
+  broken_link: "broken link",
+  missing_anchor: "missing anchor",
+  outside_base: "outside base",
+};
+
+/**
+ * Formats issues the way the command line prints them: grouped by source,
+ * one line per issue with its line, kind, and reference, and the resolved
+ * target when it differs.
+ *
+ * ```text
+ * guide/index.html
+ *   line 17    broken link     storybook → /storybook
+ * ```
+ *
+ * The text is for people and may change in any release; read the issues
+ * themselves to process them.
+ */
+export function formatIssues(issues: readonly Issue[]): string {
+  const lines: string[] = [];
+  let source: string | undefined;
+  for (const issue of issues) {
+    if (issue.source !== source) {
+      if (source !== undefined) lines.push("");
+      source = issue.source;
+      lines.push(source);
+    }
+    const location = issue.line === 0 ? "" : `line ${issue.line}`;
+    const label = labels[issue.kind] ?? issue.kind;
+    const target = issue.target === issue.href ? "" : ` → ${issue.target}`;
+    lines.push(`  ${location.padEnd(10)} ${label.padEnd(15)} ${issue.href}${target}`);
+  }
+  return lines.join("\n");
 }
