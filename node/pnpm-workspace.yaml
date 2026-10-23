@@ -1,5 +1,7 @@
 # pnpm 11 and later fail the install on dependency build scripts that are not
-# listed here. unrs-resolver's script only downloads a prebuilt binary that the
-# optional platform package already provides.
+# listed here. Both scripts only fetch or verify a prebuilt binary that an
+# optional platform package already provides. esbuild comes with Vite 7, which
+# CI tests the plugin against.
 allowBuilds:
+  esbuild: false
   unrs-resolver: false
