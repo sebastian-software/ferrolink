@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/sebastian-software/ferrolink/compare/ferrolink-v0.2.0...ferrolink-v0.2.1) (2026-10-23)
+
+
+### Features
+
+* export formatIssues from the JavaScript API ([e605275](https://github.com/sebastian-software/ferrolink/commit/e605275287325fc4ca707916ca1d25d27a0312b9))
+* let assume-present globs cover anchors and paths outside the base ([9f58549](https://github.com/sebastian-software/ferrolink/commit/9f58549a3fe769e6fc4b406d02c591047bb25f3b))
+
 ## [0.2.0](https://github.com/sebastian-software/ferrolink/compare/ferrolink-v0.1.0...ferrolink-v0.2.0) (2026-10-23)
 
 
