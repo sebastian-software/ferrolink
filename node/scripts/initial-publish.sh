@@ -109,7 +109,10 @@ trap 'rm -rf "$staging"' EXIT
 published=0
 trusted=0
 
-while IFS= read -r name; do
+# The list comes in on descriptor 3, so npm keeps the terminal as its stdin:
+# without one, it cannot wait for the browser login that 2FA asks for and
+# fails with EOTP.
+while IFS= read -r name <&3; do
   echo
   echo "==> $name"
 
@@ -160,7 +163,7 @@ EOF
     # npm asks for a 2-second pause between trust calls to avoid rate limits.
     $dry_run || sleep 2
   fi
-done <<<"$packages"
+done 3<<<"$packages"
 
 echo
 if $dry_run; then
