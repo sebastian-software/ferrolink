@@ -5,7 +5,7 @@
 
 ### ⚠ BREAKING CHANGES
 
-* `Config::base_path` is an `Option<String>` now, and `Config` and `Error` are `#[non_exhaustive]`. Build a `Config` with
+* `Config::base_path` is an `Option<String>` now, and `Config` and `Error` are `#[non_exhaustive]`. Build a `Config` with `Config::new` and set its fields. ([9c7e91e](https://github.com/sebastian-software/ferrolink/commit/9c7e91e770ffb34d85f7f1f7bdabce92d8e655aa))
 
 ### Features
 
