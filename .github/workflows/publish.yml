@@ -173,7 +173,9 @@ jobs:
     permissions:
       contents: read
       # npm Trusted Publishing and the provenance attestation both use this
-      # OIDC token.
+      # OIDC token. No npm token is involved: Trusted Publishing only works
+      # for packages that exist, so node/scripts/initial-publish.sh reserved
+      # every package name and trusted this workflow before the first release.
       id-token: write
     defaults:
       run:
@@ -219,8 +221,3 @@ jobs:
         with:
           working-directory: node
           packages: ${{ steps.packages.outputs.packages }}
-          # Trusted Publishing is enabled per package on npmjs.com and cannot
-          # cover a package's first publish. Until it is enabled for
-          # `ferrolink` and every `@ferrolink/<platform>` package, this token
-          # carries the publish; delete the input afterwards.
-          token: ${{ secrets.NPM_TOKEN }}
