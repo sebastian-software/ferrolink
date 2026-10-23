@@ -6,18 +6,18 @@
 # The publish workflow authenticates with Trusted Publishing (OIDC), which npm
 # configures per package and only for a package that already exists. The real
 # packages need the addons that only CI builds, so this script reserves every
-# name with a placeholder version 0.0.0 instead, deprecates it, and then trusts
-# the publish workflow for each package. The first release then goes out from
-# CI, with provenance and without a token.
+# name with a placeholder version 0.0.0 instead and then trusts the publish
+# workflow for each package. The first release then goes out from CI, with
+# provenance and without a token, and replaces the placeholder as `latest`.
 #
 # It works in two passes. The first publishes every missing placeholder. npm
 # processes a new package for a few minutes before anything else can see it,
-# so the second pass waits for each package before it deprecates the
-# placeholder and configures the trust.
+# so the second pass waits for each new package before it configures the
+# trust.
 #
 # The packages are `ferrolink` and one `@ferrolink/<platform>` per napi target
 # in node/package.json. A package that already exists is not published again,
-# and one whose trust is configured is left alone, so the script can be
+# and one that already trusts the workflow is left alone, so the script can be
 # re-run after a failure.
 #
 #   pnpm install            # in node/, for @napi-rs/cli
@@ -53,20 +53,6 @@ run() {
   fi
 }
 
-# Runs a command that can fail while npm still processes a new package, for
-# up to five minutes.
-retry() {
-  local attempt
-  for attempt in $(seq 1 20); do
-    if "$@"; then
-      return 0
-    fi
-    echo "  retrying in 15 seconds ($attempt of 20 failed)"
-    sleep 15
-  done
-  return 1
-}
-
 # Waits up to ten minutes until npm serves the placeholder of a new package.
 wait_until_processed() {
   local attempt
@@ -81,10 +67,48 @@ wait_until_processed() {
   return 1
 }
 
-# Whether the placeholder exists and is not deprecated yet.
-undeprecated_placeholder() {
-  [[ "$(npm view "$1@$placeholder" version 2>/dev/null)" == "$placeholder" ]] &&
-    [[ -z "$(npm view "$1@$placeholder" deprecated 2>/dev/null)" ]]
+# Whether the package already trusts the publish workflow of this repository.
+# npm prints nothing when the package has no trust configuration, and also
+# when listing needs a 2FA login of its own, which it cannot ask for here.
+trust_configured() {
+  npm trust list "$1" --json 2>/dev/null | node -e '
+    let input = ""
+    process.stdin.on("data", (chunk) => (input += chunk))
+    process.stdin.on("end", () => {
+      const [workflow, repository] = process.argv.slice(1)
+      let configs = []
+      try {
+        configs = [].concat(JSON.parse(input))
+      } catch {}
+      const found = configs.some((c) => c.file === workflow && c.repository === repository)
+      process.exit(found ? 0 : 1)
+    })
+  ' "$workflow" "$repository"
+}
+
+# Trusts the publish workflow, retrying for up to five minutes while npm still
+# processes a new package. A failed attempt checks once more before it waits:
+# npm refuses a second configuration with a conflict, and when the check
+# before missed an existing one, the 2FA login of the failed attempt now lets
+# the check see it.
+trust_workflow() {
+  local attempt
+  for attempt in $(seq 1 20); do
+    if trust_configured "$1"; then
+      echo "  already trusts $workflow"
+      return 0
+    fi
+    if npm trust github "$1" --repository "$repository" --file "$workflow" --allow-publish --yes; then
+      return 0
+    fi
+    if trust_configured "$1"; then
+      echo "  already trusts $workflow"
+      return 0
+    fi
+    echo "  retrying in 15 seconds ($attempt of 20 failed)"
+    sleep 15
+  done
+  return 1
 }
 
 # `npm trust` needs npm 11.15.0 or newer.
@@ -125,10 +149,10 @@ packages="$(node --input-type=module -e '
 
 staging="$(mktemp -d)"
 trap 'rm -rf "$staging"' EXIT
+touch "$staging/fresh"
 
 published=0
 trusted=0
-touch "$staging/fresh"
 
 # Both passes read the list from descriptor 3, so npm keeps the terminal as
 # its stdin: without one, it cannot wait for the browser login that 2FA asks
@@ -169,44 +193,32 @@ EOF
 done 3<<<"$packages"
 
 echo
-echo "Deprecating placeholders and trusting $workflow"
+echo "Trusting $workflow"
 while IFS= read -r name <&3; do
   echo
   echo "==> $name"
-
-  fresh=false
-  if grep -qxF "$name" "$staging/fresh"; then
-    fresh=true
-    $dry_run || wait_until_processed "$name"
-  fi
-
-  if $fresh || undeprecated_placeholder "$name"; then
-    if $dry_run; then
-      run npm deprecate "$name@$placeholder" "Placeholder; install the latest ferrolink release."
+  if $dry_run; then
+    if trust_configured "$name"; then
+      echo "  already trusts $workflow"
     else
-      retry npm deprecate "$name@$placeholder" "Placeholder; install the latest ferrolink release."
-    fi
-  fi
-
-  # Without `--json`, an existing configuration names its workflow file.
-  if ! $dry_run && [[ "$(npm trust list "$name" 2>/dev/null || true)" == *"$workflow"* ]]; then
-    echo "  already trusts $workflow"
-  else
-    if $dry_run; then
       run npm trust github "$name" --repository "$repository" --file "$workflow" --allow-publish --yes
-    else
-      retry npm trust github "$name" --repository "$repository" --file "$workflow" --allow-publish --yes
+      trusted=$((trusted + 1))
     fi
-    trusted=$((trusted + 1))
-    # npm asks for a 2-second pause between trust calls to avoid rate limits.
-    $dry_run || sleep 2
+    continue
   fi
+  if grep -qxF "$name" "$staging/fresh"; then
+    wait_until_processed "$name"
+  fi
+  trust_workflow "$name"
+  trusted=$((trusted + 1))
+  # npm asks for a 2-second pause between trust calls to avoid rate limits.
+  sleep 2
 done 3<<<"$packages"
 
 echo
 if $dry_run; then
   echo "Dry run: $published package(s) to publish, $trusted trust configuration(s) to create."
 else
-  echo "Published $published placeholder(s); configured $trusted trusted publisher(s)."
+  echo "Published $published placeholder(s) and checked the trust of $trusted package(s)."
   echo "The next release publishes from $workflow through Trusted Publishing."
 fi
