@@ -38,11 +38,13 @@ pub struct Config {
     /// checked. Matching pages are still scanned, so links into them keep
     /// their anchor checks.
     pub exclude: Vec<String>,
-    /// Glob patterns, relative to the root, of link targets that count as
-    /// present although the build does not contain them, such as `v5/**` for
-    /// an archived version that is deployed separately. A pattern matches the
-    /// target path or the `index.html` a host serves for it. Fragments into
-    /// these targets are not checked.
+    /// Glob patterns of link targets that count as present, such as `v5/**`
+    /// for an archived version that is deployed separately. A pattern with a
+    /// leading `/` matches the absolute URL path, base path included, and
+    /// also covers targets outside the base path; any other pattern is
+    /// relative to the root. A pattern matches the target path or the
+    /// `index.html` a host serves for it. A matching target is reported
+    /// neither as missing nor for a missing fragment.
     pub assume_present: Vec<String>,
     /// Whether a fragment must name an element on the target page.
     pub anchors: bool,
@@ -127,7 +129,8 @@ pub fn check(config: &Config) -> Result<Report, Error> {
         return Err(Error::Root(config.root.clone(), error));
     }
     let exclude = patterns(&config.exclude).map_err(Error::Exclude)?;
-    let assume_present = patterns(&config.assume_present).map_err(Error::AssumePresent)?;
+    let assume_present =
+        AssumedTargets::new(&config.assume_present).map_err(Error::AssumePresent)?;
     let threads = config.threads.map_or_else(
         || std::thread::available_parallelism().map_or(1, NonZeroUsize::get),
         NonZeroUsize::get,
@@ -136,7 +139,7 @@ pub fn check(config: &Config) -> Result<Report, Error> {
         .num_threads(threads)
         .build()
         .map_err(Error::Threads)?;
-    pool.install(|| run(config, exclude.as_ref(), assume_present.as_ref(), threads))
+    pool.install(|| run(config, exclude.as_ref(), &assume_present, threads))
 }
 
 fn patterns(globs: &[String]) -> Result<Option<PatternSet>, PatternSetError> {
@@ -155,7 +158,7 @@ struct Page {
 fn run(
     config: &Config,
     exclude: Option<&PatternSet>,
-    assume_present: Option<&PatternSet>,
+    assume_present: &AssumedTargets,
     threads: usize,
 ) -> Result<Report, Error> {
     let started = Instant::now();
@@ -268,7 +271,7 @@ struct Checker<'a> {
     resolver: &'a Resolver,
     scans: &'a [PageScan],
     page_index: &'a FxHashMap<&'a str, usize>,
-    assume_present: Option<&'a PatternSet>,
+    assume_present: &'a AssumedTargets,
     anchors: bool,
 }
 
@@ -307,7 +310,9 @@ impl Checker<'_> {
                 Resolved::External => outcome.external += 1,
                 Resolved::OutsideBase { url } => {
                     outcome.internal += 1;
-                    outcome.issues.push(issue(IssueKind::OutsideBase, url));
+                    if !self.assume_present.covers(None, &url) {
+                        outcome.issues.push(issue(IssueKind::OutsideBase, url));
+                    }
                 }
                 Resolved::Internal {
                     path,
@@ -316,7 +321,7 @@ impl Checker<'_> {
                 } => {
                     outcome.internal += 1;
                     let Some(file) = self.site.serve(&path) else {
-                        if !self.is_assumed_present(&path) {
+                        if !self.assume_present.covers(Some(&path), &url) {
                             outcome.issues.push(issue(IssueKind::BrokenLink, url));
                         }
                         continue;
@@ -329,7 +334,9 @@ impl Checker<'_> {
                         // not checked.
                         continue;
                     };
-                    if !has_anchor(&self.scans[target], &fragment) {
+                    if !has_anchor(&self.scans[target], &fragment)
+                        && !self.assume_present.covers(Some(&path), &url)
+                    {
                         outcome
                             .issues
                             .push(issue(IssueKind::MissingAnchor, format!("{url}#{fragment}")));
@@ -339,21 +346,56 @@ impl Checker<'_> {
         }
         outcome
     }
+}
 
-    /// Whether an `assume_present` pattern matches the site-relative `path`,
-    /// or the `index.html` a host serves for it.
-    fn is_assumed_present(&self, path: &str) -> bool {
-        let Some(set) = self.assume_present else {
+/// The `assume_present` patterns: those with a leading `/` match the absolute
+/// URL path, the others the path relative to the root.
+struct AssumedTargets {
+    relative: Option<PatternSet>,
+    absolute: Option<PatternSet>,
+}
+
+impl AssumedTargets {
+    fn new(globs: &[String]) -> Result<Self, PatternSetError> {
+        let (absolute, relative): (Vec<&String>, Vec<&String>) =
+            globs.iter().partition(|glob| glob.starts_with('/'));
+        let absolute: Vec<String> = absolute
+            .into_iter()
+            .map(|glob| glob.trim_start_matches('/').to_owned())
+            .collect();
+        let relative: Vec<String> = relative.into_iter().cloned().collect();
+        Ok(Self {
+            relative: patterns(&relative)?,
+            absolute: patterns(&absolute)?,
+        })
+    }
+
+    /// Whether a target counts as present. `path` is the decoded path
+    /// relative to the root, none for a target outside the base path; `url`
+    /// is the absolute URL path.
+    fn covers(&self, path: Option<&str>, url: &str) -> bool {
+        if let (Some(set), Some(path)) = (&self.relative, path)
+            && serves_match(set, path)
+        {
+            return true;
+        }
+        let Some(set) = &self.absolute else {
             return false;
         };
-        let directory = path.trim_end_matches('/');
-        let index = if directory.is_empty() {
-            "index.html".to_owned()
-        } else {
-            format!("{directory}/index.html")
-        };
-        set.is_match_glob_path(path) || set.is_match_glob_path(index)
+        let url = percent_encoding::percent_decode_str(url).decode_utf8_lossy();
+        serves_match(set, url.trim_start_matches('/'))
     }
+}
+
+/// Whether `set` matches `path` or the `index.html` a host serves for it.
+fn serves_match(set: &PatternSet, path: &str) -> bool {
+    let directory = path.trim_end_matches('/');
+    let index = if directory.is_empty() {
+        "index.html".to_owned()
+    } else {
+        format!("{directory}/index.html")
+    };
+    set.is_match_glob_path(path) || set.is_match_glob_path(index)
 }
 
 /// Whether navigating to `#fragment` lands on an element, following the

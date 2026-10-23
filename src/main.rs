@@ -43,9 +43,10 @@ struct CheckArgs {
     #[arg(long, value_name = "GLOB")]
     exclude: Vec<String>,
 
-    /// Glob (relative to DIR) of link targets that count as present although
-    /// the build does not contain them, such as `v5/**` for an archived
-    /// version deployed separately. Repeatable.
+    /// Glob of link targets that count as present, such as `v5/**` for an
+    /// archived version deployed separately: relative to DIR, or with a
+    /// leading `/` the absolute URL path, which also covers paths outside the
+    /// base. Matching targets are not checked for anchors either. Repeatable.
     #[arg(long, value_name = "GLOB")]
     assume_present: Vec<String>,
 
