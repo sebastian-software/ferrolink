@@ -7,7 +7,14 @@
   "packages": {
     ".": {
       "component": "ferrolink",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "node/package.json",
+          "jsonpath": "$.version"
+        }
+      ]
     }
   }
 }

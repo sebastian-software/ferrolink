@@ -1,8 +1,9 @@
 # One product, one release signal: Release Please opens a single release pull
 # request; merging it creates the tag and the GitHub Release, and the gated
-# publish job below runs from that tag. The shape follows the standards
-# publish skeleton (reference/release-please/publish-skeleton.yml in
-# sebastian-software/standards), reduced to the one job this crate needs.
+# publish jobs below run from that tag: the crate to crates.io, and the npm
+# package `ferrolink` with one `@ferrolink/<platform>` package per native
+# addon. The shape follows the standards publish skeleton
+# (reference/release-please/publish-skeleton.yml in sebastian-software/standards).
 #
 # The manual path exists for retries only: when the publish job failed after
 # the release was cut, dispatch the workflow with that release's tag. The job
@@ -84,3 +85,142 @@ jobs:
           # yet. Until it is enabled, this token carries the publish; delete
           # the input afterwards so a run can never fall back to it silently.
           token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  native-matrix:
+    name: napi platform matrix
+    needs: release-please
+    if: >-
+      ${{ !cancelled() && (
+        (github.event_name == 'push' && needs.release-please.outputs.releases_created == 'true') ||
+        github.event_name == 'workflow_dispatch'
+      ) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.platforms.outputs.matrix }}
+    steps:
+      - id: platforms
+        uses: sebastian-software/standards/.github/actions/napi-matrix@a840766444dbb0e421f1f1868c48bee315ead769 # v0.13.0
+        with:
+          package: ferrolink
+
+  build-native:
+    name: build ${{ matrix.id }}
+    needs: [release-please, native-matrix]
+    if: ${{ !cancelled() && needs.native-matrix.result == 'success' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.native-matrix.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: node
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable branch
+        with:
+          targets: ${{ matrix.target }}
+
+      # The musl runners are glibc hosts. `napi build --cross-compile` links
+      # musl addons with cargo-zigbuild, which needs Zig.
+      - if: ${{ matrix.libc == 'musl' }}
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.15.2
+      - if: ${{ matrix.libc == 'musl' }}
+        uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2.87.30
+        with:
+          tool: cargo-zigbuild
+
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        with:
+          package_json_file: node/package.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: node/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build:native --target "$TARGET" $CROSS_COMPILE
+        env:
+          TARGET: ${{ matrix.target }}
+          CROSS_COMPILE: ${{ matrix.libc == 'musl' && '--cross-compile' || '' }}
+
+      # The addon that ships is the one tested, wherever the runner can load it.
+      - if: ${{ matrix.native }}
+        run: pnpm build:ts && pnpm test
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.artifact }}
+          path: node/dist/${{ matrix.binary }}
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-npm:
+    name: publish to npm
+    needs: [release-please, build-native]
+    if: ${{ !cancelled() && needs.build-native.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # npm Trusted Publishing and the provenance attestation both use this
+      # OIDC token.
+      id-token: write
+    defaults:
+      run:
+        working-directory: node
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        with:
+          package_json_file: node/package.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+          cache-dependency-path: node/pnpm-lock.yaml
+
+      # npm Trusted Publishing needs npm 11.5.1 or newer. Pinned rather than
+      # `@latest`, so the tool that performs the publish cannot change under a
+      # release.
+      - run: npm install --global npm@11.5.1
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:ts
+
+      # Every artifact lands in a directory named after itself:
+      # `.native/native-<platform>/ferrolink.<platform>.node`.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: native-*
+          path: node/.native
+
+      # Writes one `@ferrolink/<platform>` package per napi target, adds them
+      # to `ferrolink`'s optional dependencies, and lists what is not on npm
+      # yet, platform packages first.
+      - id: packages
+        run: node scripts/prepare-publish.ts .native
+
+      - if: ${{ steps.packages.outputs.packages != '' }}
+        uses: sebastian-software/standards/.github/actions/publish-npm@a840766444dbb0e421f1f1868c48bee315ead769 # v0.13.0
+        with:
+          working-directory: node
+          packages: ${{ steps.packages.outputs.packages }}
+          # Trusted Publishing is enabled per package on npmjs.com and cannot
+          # cover a package's first publish. Until it is enabled for
+          # `ferrolink` and every `@ferrolink/<platform>` package, this token
+          # carries the publish; delete the input afterwards.
+          token: ${{ secrets.NPM_TOKEN }}
