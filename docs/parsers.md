@@ -161,6 +161,15 @@ dropped: 71% of the attribute values on this build are shorter than 16 bytes,
 and all value bytes together cost about 2 ms of the 66 ms scan in the byte
 loop, so it measured no gain.
 
+Ferroni 2.6.0 added acceleration modes (`AccelerationMode`: `Off`, `Auto`,
+`Eager`) and small dense DFAs that are built after enough use
+([sebastian-software/ferroni#455](https://github.com/sebastian-software/ferroni/pull/455)).
+On this build Ferroni 2.7.2 is level with 2.5.2: a scan-only loop over the
+pages in memory takes 47.3 ms against 47.1 ms on one thread, and
+`ferrolink check` takes 23.6 ms on all cores with either version. `Eager` for
+both patterns measured no gain on the scan and added about 0.2 ms to every
+process start, so ferrolink keeps the default `Auto`.
+
 ## Decision
 
 Ferroni is the default and the only backend in the default build, since
