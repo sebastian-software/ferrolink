@@ -28,6 +28,9 @@ v6/guide/component-playground/index.html
 1 issue in 1 file · 318 pages · 10845 internal links checked · 482 external not checked · 24 ms
 ```
 
+[Website and getting started](https://sebastian-software.github.io/ferrolink/) ·
+[Node.js and Vite reference](https://sebastian-software.github.io/ferrolink/reference/node/)
+
 ## What it checks
 
 - **Links and assets**: `a`, `area`, and `link` `href`; `script`, `img`,
@@ -197,6 +200,25 @@ pnpm install
 pnpm build
 pnpm test
 ```
+
+## Website development
+
+The Ardo site in `homepage/` uses the shared Ferramenta theme without local CSS.
+The CLI reference, Node reference, parser decision and changelog are generated
+from their canonical repository documents. Edit those sources, not the generated
+routes.
+
+```bash
+cd homepage
+pnpm install
+pnpm dev
+pnpm verify
+```
+
+`pnpm verify` runs the native before/after example, source checks, production
+build and browser checks at eight widths. The built site is also checked by
+Ferrolink itself, including its `/ferrolink/` deployment path. GitHub Actions
+deploys `main` to GitHub Pages.
 
 ## Maintaining this README
 

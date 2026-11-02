@@ -3,9 +3,7 @@
   "visibility": "oss",
   "since": 2026,
   "platform": "github",
-  "workspaces": [
-    "node"
-  ],
+  "workspaces": ["node", "homepage"],
   "readme": {
     "owner": "mdtheme"
   }

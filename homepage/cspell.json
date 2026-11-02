@@ -1,0 +1,19 @@
+{
+  "version": "0.2",
+  "ignorePaths": [".standards/"],
+  "words": [
+    "Ardo",
+    "Dogfood",
+    "extensionless",
+    "Ferralk",
+    "Ferramenta",
+    "Ferrolink",
+    "Ferroni",
+    "forgejo",
+    "lockfile",
+    "oxfmt",
+    "oxlint",
+    "pnpm",
+    "repometa"
+  ]
+}
