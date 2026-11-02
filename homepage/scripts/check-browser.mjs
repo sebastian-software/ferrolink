@@ -33,7 +33,7 @@ try {
     configFile: false,
     root: homepageRoot,
     logLevel: "silent",
-    base: "/ferrolink/",
+    base: "/",
     build: { outDir: "build/client" },
     preview: {
       host: "127.0.0.1",
@@ -90,7 +90,7 @@ try {
 }
 
 async function verifyExample(page, origin) {
-  await page.goto(new URL("/ferrolink/", origin).href, { waitUntil: "load" });
+  await page.goto(new URL("/", origin).href, { waitUntil: "load" });
   const example = page.locator("#example");
   const choice = example.getByRole("combobox", { name: "Build state", exact: true });
   await example.getByText("Native Rust result · 3 issues", { exact: true }).waitFor();
@@ -104,7 +104,7 @@ async function verifyExample(page, origin) {
 }
 async function verifyNavigation(page, origin) {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(new URL("/ferrolink/guide/getting-started/", origin).href, { waitUntil: "load" });
+  await page.goto(new URL("/guide/getting-started/", origin).href, { waitUntil: "load" });
   await page.getByRole("heading", { name: "Getting started", level: 1, exact: true }).waitFor();
   const menu = page.locator(selectors.menu);
   await focusMenuByKeyboard(page, menu);
@@ -121,7 +121,7 @@ async function verifyNavigation(page, origin) {
     .getByRole("dialog")
     .getByRole("link", { name: "Getting started", exact: true })
     .click();
-  await page.waitForURL((url) => url.pathname.startsWith("/ferrolink/guide/getting-started"));
+  await page.waitForURL((url) => url.pathname.startsWith("/guide/getting-started"));
   await page.getByRole("dialog").waitFor({ state: "detached" });
   await verifyLandscape(page, origin);
 }
@@ -138,7 +138,7 @@ async function focusMenuByKeyboard(page, menu) {
 }
 async function verifyLandscape(page, origin) {
   await page.setViewportSize({ width: 844, height: 390 });
-  await page.goto(new URL("/ferrolink/reference/node/", origin).href, { waitUntil: "load" });
+  await page.goto(new URL("/reference/node/", origin).href, { waitUntil: "load" });
   const table = page
     .locator('div[role="region"][tabindex="0"]')
     .filter({ has: page.locator("table") })
@@ -162,7 +162,7 @@ async function verifyLandscape(page, origin) {
 async function verifySearch(page, origin) {
   for (const width of [320, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto(new URL("/ferrolink/", origin).href, { waitUntil: "load" });
+    await page.goto(new URL("/", origin).href, { waitUntil: "load" });
     const search = page.locator(selectors.search);
     await search
       .locator("kbd")
@@ -188,10 +188,10 @@ async function verifySearch(page, origin) {
 async function capture(page, origin) {
   await mkdir(join(tmpdir(), "ferrolink-review"), { recursive: true });
   for (const [path, label] of [
-    ["/ferrolink/", "home"],
-    ["/ferrolink/guide/getting-started/", "guide"],
-    ["/ferrolink/reference/node/", "reference"],
-    ["/ferrolink/evidence/parsers/", "evidence"],
+    ["/", "home"],
+    ["/guide/getting-started/", "guide"],
+    ["/reference/node/", "reference"],
+    ["/evidence/parsers/", "evidence"],
   ]) {
     for (const width of [390, 1440]) {
       await page.setViewportSize({ width, height: 1000 });

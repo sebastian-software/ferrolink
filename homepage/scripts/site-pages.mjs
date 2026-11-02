@@ -22,5 +22,5 @@ export const documents = [
 ];
 export const expectedPages = ["index.html", ...documents.map(({ path }) => `${path}/index.html`)];
 export function pagePath(page) {
-  return `/ferrolink/${page === "index.html" ? "" : page.replace(/index\.html$/, "")}`;
+  return `/${page === "index.html" ? "" : page.replace(/index\.html$/, "")}`;
 }
