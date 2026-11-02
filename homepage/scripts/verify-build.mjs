@@ -52,7 +52,7 @@ execFileSync(
     "check",
     fileURLToPath(output),
     "--site-url",
-    "https://sebastian-software.github.io/ferrolink/",
+    "https://ferrolink.dev/",
   ],
   { cwd: repository, stdio: "inherit" },
 );
