@@ -5,15 +5,20 @@
     "Ardo",
     "Dogfood",
     "extensionless",
+    "Ferra",
     "Ferralk",
     "Ferramenta",
     "Ferrolink",
     "Ferroni",
     "forgejo",
     "lockfile",
+    "Monografie",
     "oxfmt",
     "oxlint",
     "pnpm",
-    "repometa"
+    "repometa",
+    "tokenizer",
+    "Tokenizer",
+    "tokenizers"
   ]
 }

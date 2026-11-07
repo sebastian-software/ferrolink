@@ -203,10 +203,11 @@ pnpm test
 
 ## Website development
 
-The Ardo site in `homepage/` uses the shared Ferramenta theme without local CSS.
-The CLI reference, Node reference, parser decision and changelog are generated
-from their canonical repository documents. Edit those sources, not the generated
-routes.
+The Ardo site in `homepage/` uses the shared Ferramenta theme: the Monografie
+page system on the homepage and the Ferra reading layout on documentation
+pages. The CLI reference, Node reference, parser decision and changelog are
+generated from their canonical repository documents. Edit those sources, not
+the generated routes.
 
 ```bash
 cd homepage
@@ -215,9 +216,12 @@ pnpm dev
 pnpm verify
 ```
 
-`pnpm verify` runs the native before/after example, source checks, production
-build and browser checks at eight widths. The built site is also checked by
-Ferrolink itself, including its `/ferrolink/` deployment path. GitHub Actions
+Every specimen on the homepage is real output of the published npm package at
+the version pinned in `homepage/package.json`; the parser chart reads the
+tables in `docs/parsers.md`. `pnpm sample:write` regenerates
+`app/data/home-samples.json`, and `pnpm verify` fails when it is stale, then
+runs the source checks, the production build and browser checks at eight
+widths. The built site is also checked by Ferrolink itself. GitHub Actions
 deploys `main` to GitHub Pages.
 
 ## Maintaining this README

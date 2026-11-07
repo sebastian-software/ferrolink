@@ -11,6 +11,8 @@ on:
       - "Cargo.lock"
       - "src/**"
       - "node/README.md"
+      - "node/package.json"
+      - ".release-please-manifest.json"
       - ".github/workflows/homepage.yml"
   push:
     branches: [main]
@@ -23,6 +25,8 @@ on:
       - "Cargo.lock"
       - "src/**"
       - "node/README.md"
+      - "node/package.json"
+      - ".release-please-manifest.json"
       - ".github/workflows/homepage.yml"
   workflow_dispatch:
 

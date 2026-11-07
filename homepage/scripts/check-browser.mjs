@@ -19,9 +19,10 @@ assert(
   "FERROLINK_PREVIEW_PORT must be a valid TCP port",
 );
 const selectors = {
-  nav: ".ferra-header > .ferra-nav",
+  nav: ".mono-header .mono-menu nav",
+  // Documentation pages carry Ardo's drawer; the homepage folds its links into the Monografie menu.
   menu: 'button[aria-label="Toggle menu"]',
-  summary: 'button[aria-label="Toggle menu"]',
+  homeMenu: ".mono-header .mono-menu-button",
   flyout: '[role="dialog"]',
   search: 'button[aria-label="Search"]',
 };
@@ -66,12 +67,12 @@ try {
     }
   }
 
-  await verifyExample(page, origin);
+  await verifyHomepage(page, origin);
   await verifyNavigation(page, origin);
   await verifySearch(page, origin);
   await page.emulateMedia({ reducedMotion: "reduce" });
   const motion = await page
-    .locator(".ferra-page, .ferra-page *")
+    .locator(".ferra-page, .ferra-page *, .mono, .mono *")
     .evaluateAll((elements) =>
       elements
         .map((element) => getComputedStyle(element).animationDuration)
@@ -82,25 +83,82 @@ try {
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await capture(page, origin);
   console.log(
-    "Verified all pages at eight widths, native before/after check results, navigation, search, focus return, reduced motion and runtime errors.",
+    "Verified all pages at eight widths, the homepage's real-output toggles, chart and menu, navigation, search, focus return, reduced motion and runtime errors.",
   );
 } finally {
   await browser?.close();
   await previewServer?.close();
 }
 
-async function verifyExample(page, origin) {
+/** The homepage's toggles, the chart's tooltip and the Monografie menu. */
+async function verifyHomepage(page, origin) {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(new URL("/", origin).href, { waitUntil: "load" });
+  await verifyExample(page);
+  await verifyPaths(page);
+  await verifyVersions(page);
+  await verifyChart(page);
+  await verifyHomepageMenu(page, origin);
+}
+async function verifyExample(page) {
   const example = page.locator("#example");
-  const choice = example.getByRole("combobox", { name: "Build state", exact: true });
-  await example.getByText("Native Rust result · 3 issues", { exact: true }).waitFor();
-  await choice.selectOption("fixed");
-  await example.getByText("Native Rust result · 0 issues", { exact: true }).waitFor();
-  assert.match(await example.textContent(), /No issues · exit 0/);
-  assert.doesNotMatch(await example.locator("pre").last().textContent(), /missing anchor/);
-  await choice.selectOption("broken");
-  await example.getByText("Native Rust result · 3 issues", { exact: true }).waitFor();
-  assert.match(await example.locator("pre").last().textContent(), /outside base/);
+  const choices = example.getByRole("group", { name: "Build", exact: true });
+  await example.getByText("Three issues found", { exact: true }).waitFor();
+  assert.match(await example.textContent(), /outside base/);
+  assert.match(await example.textContent(), /missing anchor/);
+  await choices.getByRole("button", { name: "After the fix", exact: true }).click();
+  await example.getByText("No issues found", { exact: true }).waitFor();
+  assert.doesNotMatch(
+    await example.locator(".mono-facing").first().textContent(),
+    /missing anchor/,
+  );
+  assert.match(await example.textContent(), /one external URL, not fetched/);
+  await choices.getByRole("button", { name: "Before the fix", exact: true }).click();
+  await example.getByText("Three issues found", { exact: true }).waitFor();
+  await example.locator("summary").click();
+  assert.match(await example.textContent(), /id="install"/);
+  await example.locator("summary").click();
+}
+async function verifyPaths(page) {
+  const paths = page.locator("#paths");
+  await paths.getByText("Eight links, five found", { exact: true }).waitFor();
+  assert.match(await paths.textContent(), /\/docs\/Guidebroken link/);
+}
+async function verifyVersions(page) {
+  const versions = page.locator("#versions");
+  const choices = versions.getByRole("group", { name: "Check", exact: true });
+  await versions.getByText("Three issues found", { exact: true }).waitFor();
+  assert.match(await versions.textContent(), /v1\/index\.html/);
+  await choices.getByRole("button", { name: "Skip the archive", exact: true }).click();
+  await versions.getByText("Two issues found", { exact: true }).waitFor();
+  assert.match(await versions.textContent(), /exclude: \["v1\/\*\*"\]/);
+  await choices
+    .getByRole("button", { name: "Accept the separate deployment", exact: true })
+    .click();
+  await versions.getByText("One issue found", { exact: true }).waitFor();
+  assert.doesNotMatch(await versions.locator(".mono-facing").first().textContent(), /\/v0\//);
+}
+async function verifyChart(page) {
+  const chart = page.locator("#scanner");
+  await chart.getByRole("button", { name: "The whole check, all cores", exact: true }).click();
+  const bar = chart.locator(".mono-bars li").nth(1);
+  await bar.focus();
+  await chart.locator(".mono-tip[data-show]").waitFor();
+  assert.match(await chart.locator(".mono-tip").textContent(), /Ferroni/);
+  assert.doesNotMatch(await chart.textContent(), /NaN|Infinity|undefined/);
+}
+async function verifyHomepageMenu(page, origin) {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(new URL("/", origin).href, { waitUntil: "load" });
+  const button = page.locator(selectors.homeMenu);
+  await button.click();
+  await page.locator(selectors.nav).getByRole("link", { name: "Guide", exact: true }).waitFor();
+  await page.keyboard.press("Escape");
+  assert.equal(await button.getAttribute("aria-expanded"), "false", "The menu did not close");
+  assert(
+    await button.evaluate((element) => element === document.activeElement),
+    "Menu focus was not restored",
+  );
 }
 async function verifyNavigation(page, origin) {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -153,8 +211,9 @@ async function verifyLandscape(page, origin) {
   const lastLink = page.getByRole("dialog").getByRole("link").last();
   await lastLink.focus();
   const bounds = await lastLink.boundingBox();
+  // One pixel of slack for subpixel layout, as in the page overflow check.
   assert(
-    bounds && bounds.y >= 0 && bounds.y + bounds.height <= 390,
+    bounds && bounds.y >= 0 && bounds.y + bounds.height <= 391,
     "Landscape menu link leaves the viewport",
   );
   await page.keyboard.press("Escape");
@@ -219,33 +278,40 @@ async function verifyViewport({ page, pageFile, viewport, origin }) {
     `${pageFile} has horizontal page overflow at ${viewport.name} width ${viewport.width}px: ${layout.pageWidth}px`,
   );
 
-  const navDisplay = await page
-    .locator(selectors.nav)
-    .evaluate((element) => getComputedStyle(element).display);
-  const menuDisplay = await page
-    .locator(selectors.menu)
-    .evaluate((element) => getComputedStyle(element).display);
+  await verifyHeader(page, pageFile, viewport);
+  await verifyAccessibility(page, pageFile, viewport);
+  console.log(`Verified ${pageFile} at ${viewport.name} (${viewport.width}px).`);
+}
+/** The display of the first element a selector finds, or "none" when there is none. */
+async function display(page, selector) {
+  const element = page.locator(selector).first();
+  if ((await element.count()) === 0) return "none";
+  return element.evaluate((node) => getComputedStyle(node).display);
+}
+async function verifyHeader(page, pageFile, viewport) {
+  // The Monografie header folds its links into a menu below 961px. On the
+  // homepage the menu button takes them; documentation pages hide it and keep
+  // Ardo's drawer, which also stands in for the guide sidebar while it is hidden.
   assert(
     await page.locator(selectors.search).isVisible(),
     "The site should keep search visible at each checked viewport",
   );
-  if (viewport.name === "desktop") {
-    assert.notEqual(navDisplay, "none", `${pageFile} hides desktop section navigation`);
-    assert.equal(menuDisplay, "none", `${pageFile} shows the phone navigation on desktop`);
-  } else {
-    assert.equal(
-      navDisplay,
-      "none",
-      `${pageFile} shows desktop navigation at ${viewport.name} width`,
-    );
-    assert.notEqual(
-      menuDisplay,
-      "none",
-      `${pageFile} hides the phone navigation at ${viewport.name} width`,
-    );
+  const wide = viewport.width >= 961;
+  const links = await display(page, ".mono-header .mono-menu");
+  if (wide) assert.notEqual(links, "none", `${pageFile} hides the header links on wide screens`);
+  else assert.equal(links, "none", `${pageFile} shows the header links at ${viewport.name}`);
+  const homeMenu = await display(page, selectors.homeMenu);
+  if (pageFile === "index.html") {
+    assert.equal(homeMenu === "none", wide, `${pageFile} menu button at ${viewport.name}`);
+    return;
   }
-  await verifyAccessibility(page, pageFile, viewport);
-  console.log(`Verified ${pageFile} at ${viewport.name} (${viewport.width}px).`);
+  assert.equal(homeMenu, "none", `${pageFile} shows a second menu at ${viewport.name}`);
+  const drawer = await display(page, selectors.menu);
+  const sidebar = await display(page, ".ferra-reading-navigation");
+  assert(
+    drawer !== "none" || sidebar !== "none",
+    `${pageFile} offers no documentation navigation at ${viewport.name}`,
+  );
 }
 async function verifyAccessibility(page, pageFile, viewport) {
   await page.addScriptTag({ content: axeSource });
