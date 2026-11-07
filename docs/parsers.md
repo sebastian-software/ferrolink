@@ -27,6 +27,9 @@ M1 Ultra (16 performance and 4 efficiency cores), macOS, Rust 1.99, release
 build. The first round of this comparison ran on the 318-page build of
 2026-10-13 (9.2 MB); a number below that comes from that build says so.
 
+The measurements ran on Ferrolink 0.1.0 during its development, before that
+version was released.
+
 Reproduce at commit `cb42b5b`, the last with every backend:
 
 ```bash
