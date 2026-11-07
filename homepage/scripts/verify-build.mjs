@@ -1,13 +1,16 @@
 /* eslint-disable security/detect-non-literal-fs-filename -- Every page comes from the repository-owned route manifest. */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import { expectedPages } from "./site-pages.mjs";
 
 const repository = fileURLToPath(new URL("../../", import.meta.url));
 const output = new URL("../build/client/", import.meta.url);
+const { version } = JSON.parse(
+  await readFile(new URL("../app/data/site.json", import.meta.url), "utf8"),
+);
 for (const page of expectedPages) {
   const source = await readFile(new URL(page, output), "utf8");
   const html = source.replaceAll(/<!--[\s\S]*?-->/g, "");
@@ -17,13 +20,19 @@ for (const page of expectedPages) {
     1,
     `${page} needs exactly one main landmark`,
   );
-  assert(
-    html.includes('class="ferra-header ferra-wrap"') &&
-      html.includes('class="ferra-footer ferra-wrap"'),
-    `${page} is missing the shared shell`,
-  );
+  for (const fragment of [
+    'class="mono-header"',
+    'class="mono-footer"',
+    `<span class="mono-release" title="Current release">v${version}</span>`,
+    "https://ferramenta.dev",
+  ]) {
+    assert(html.includes(fragment), `${page} is missing ${fragment}`);
+  }
   assert(!html.includes("site.css"), `${page} uses project-specific CSS`);
-  if (page === "index.html") continue;
+  if (page === "index.html") {
+    verifyHomepage(html);
+    continue;
+  }
   const blocks = [...html.matchAll(/<pre\b[^>]*>/g)];
   assert(
     blocks.every(([tag]) => tag.includes('tabindex="0"')),
@@ -39,6 +48,7 @@ for (const page of expectedPages) {
     `${page} has a table without a keyboard-scrollable region`,
   );
 }
+await verifyScopedCss();
 // Dogfood the actual checker for pages, fragments, assets and the project base.
 execFileSync(
   "cargo",
@@ -59,3 +69,55 @@ execFileSync(
 console.log(
   `Verified the shared shell and reading semantics on all ${expectedPages.length} pages.`,
 );
+
+/** The homepage reads on the Monografie page and keeps its published anchors. */
+function verifyHomepage(html) {
+  assert(html.includes('class="mono fl-home"'), "The homepage should use the Monografie page.");
+  for (const id of ["overview", "example", "paths", "versions", "scanner", "fit", "start"]) {
+    assert(html.includes(`id="${id}"`), `Preserve the published homepage anchor #${id}.`);
+  }
+  assert(
+    html.includes('data-product="ferrolink"'),
+    "The homepage opening should show Ferrolink's own instrument.",
+  );
+}
+
+/** A selector list split at its top-level commas, so `:is(a, b)` stays whole. */
+function selectorList(prelude) {
+  const selectors = [""];
+  let depth = 0;
+  for (const char of prelude) {
+    if (char === "(") depth += 1;
+    if (char === ")") depth -= 1;
+    if (char === "," && depth === 0) selectors.push("");
+    else selectors[selectors.length - 1] += char;
+  }
+  return selectors;
+}
+
+/**
+ * Shared presentation lives in ferramenta-family. The site styles only its own
+ * homepage specimens and shell seams, next to their components, under fl-.
+ */
+async function verifyScopedCss() {
+  const appFiles = await readdir(new URL("../app/", import.meta.url), { recursive: true });
+  for (const file of appFiles.filter((name) => name.endsWith(".css"))) {
+    const path = file.replaceAll("\\", "/");
+    assert(
+      path.startsWith("components/"),
+      `Keep ${path} beside its specimen in app/components/, or in ferramenta-family.`,
+    );
+    const css = await readFile(new URL(`../app/${path}`, import.meta.url), "utf8");
+    const preludes = css
+      .replaceAll(/\/\*[\s\S]*?\*\//g, "")
+      .split("{")
+      .slice(0, -1)
+      .map((chunk) =>
+        chunk.slice(Math.max(chunk.lastIndexOf("}"), chunk.lastIndexOf(";")) + 1).trim(),
+      )
+      .filter((prelude) => !prelude.startsWith("@"));
+    for (const selector of preludes.flatMap((prelude) => selectorList(prelude))) {
+      assert(selector.includes(".fl-"), `${path}: scope "${selector.trim()}" to an fl- class.`);
+    }
+  }
+}

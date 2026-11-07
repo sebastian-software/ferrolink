@@ -28,7 +28,20 @@ for (const document of documents) {
 const cargo = await readFile(new URL("Cargo.toml", repository), "utf8");
 const version = /^version = "([^"]+)"/m.exec(cargo)?.[1];
 if (!version) throw new Error("The package has no release version.");
-await writeData("site.json", { version });
+const rustVersion = /^rust-version = "([^"]+)"$/m.exec(cargo)?.[1];
+if (!rustVersion) throw new Error("Cargo.toml must declare the minimum supported Rust version.");
+const license = /^license = "([^"]+)"$/m.exec(cargo)?.[1];
+if (!license) throw new Error("Cargo.toml must declare the license.");
+const npm = JSON.parse(await readFile(new URL("node/package.json", repository), "utf8"));
+const node = npm.engines?.node;
+if (typeof node !== "string") throw new Error("node/package.json must declare its Node.js range.");
+// "^20.19.0 || >=22.12.0" reads as "20.19+ or 22.12+" on the page.
+const nodeVersions = node.split("||").map((range) => {
+  const [major, minor] = range.replaceAll(/[^\d.]/g, "").split(".");
+  if (!major || !minor) throw new Error(`Cannot read the Node.js range ${node}.`);
+  return `${major}.${minor}+`;
+});
+await writeData("site.json", { version, rustVersion, license, nodeVersions });
 const labels = {
   guide: "Guide",
   reference: "Reference",

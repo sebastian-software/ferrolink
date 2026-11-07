@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from "ardo/react";
-import { ArdoActiveLink as NavLink, useArdoHref, useArdoPageData, useArdoPath } from "ardo/runtime";
+import { ArdoActiveLink as NavLink, useArdoPageData, useArdoPath } from "ardo/runtime";
 import {
   ArdoErrorBoundary,
   ArdoHeaderSearch,
@@ -10,9 +10,7 @@ import {
 } from "ardo/ui";
 import { MarkDefs } from "ferramenta-family";
 import {
-  FerraFooter,
   FerraGuideNavigation,
-  FerraHeader,
   FerraPage,
   FerraReadingLayout,
   FerraReadingTable,
@@ -20,12 +18,15 @@ import {
 } from "ferramenta-family/ferra";
 import touchIcon from "ferramenta-family/ferra-assets/ferrolink/apple-touch-icon.png?url";
 import favicon from "ferramenta-family/ferra-assets/ferrolink/favicon.ico?url";
-import { WORKSHOP } from "ferramenta-family/registry";
+import { MonoFooter, MonoHeader, MonoPage } from "ferramenta-family/monografie";
 import "ferramenta-family/ferra.css";
+import "ferramenta-family/monografie.css";
 
 import navigation from "./data/navigation.json";
 import site from "./data/site.json";
 import "ferramenta-family/ferra-ardo.css";
+
+import "./components/site-shell.css";
 
 export function Layout({ children }: { children: ReactNode }) {
   return (
@@ -76,39 +77,63 @@ function GuideNavigation({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function Header() {
-  const home = useArdoHref("/");
+/** The documentation menu and search, which stay in the header on documentation pages. */
+function DocsActions() {
   const [open, setOpen] = useState(false);
   return (
-    <FerraHeader
+    <>
+      <ArdoMobileNavigation title="Ferrolink documentation" open={open} onOpenChange={setOpen}>
+        <GuideNavigation
+          onNavigate={() => {
+            setOpen(false);
+          }}
+        />
+      </ArdoMobileNavigation>
+      <ArdoHeaderSearch
+        variant="icon"
+        onActivate={() => {
+          setOpen(false);
+        }}
+      />
+    </>
+  );
+}
+
+function Header({ docs }: { docs: boolean }) {
+  return (
+    <MonoHeader
       product="ferrolink"
-      home={home}
-      nav={
-        <>
-          <NavLink to="/guide/getting-started">Guide</NavLink>
-          <NavLink to="/reference/cli">Reference</NavLink>
-          <NavLink to="/evidence/parsers">Evidence</NavLink>
-          <a href="https://ferramenta.dev">Ferramenta</a>
-        </>
-      }
-      actions={
-        <>
-          <ArdoMobileNavigation title="Ferrolink documentation" open={open} onOpenChange={setOpen}>
-            <GuideNavigation
-              onNavigate={() => {
-                setOpen(false);
-              }}
-            />
-          </ArdoMobileNavigation>
-          <ArdoHeaderSearch
-            variant="icon"
-            onActivate={() => {
-              setOpen(false);
-            }}
-          />
-        </>
-      }
+      home="/"
+      release={site.version}
+      links={[
+        <NavLink key="guide" to="/guide/getting-started">
+          Guide
+        </NavLink>,
+        <NavLink key="reference" to="/reference/cli">
+          Reference
+        </NavLink>,
+        <NavLink key="evidence" to="/evidence/parsers">
+          Evidence
+        </NavLink>,
+        <NavLink key="changelog" to="/changelog">
+          Changelog
+        </NavLink>,
+        <a key="github" href="https://github.com/sebastian-software/ferrolink">
+          GitHub
+        </a>,
+      ]}
+      actions={docs ? <DocsActions /> : <ArdoHeaderSearch variant="icon" />}
     />
+  );
+}
+
+function Footer() {
+  return (
+    <MonoFooter product="ferrolink" home="/">
+      <a href="https://github.com/sebastian-software/ferrolink">GitHub</a>
+      <a href="https://crates.io/crates/ferrolink">crates.io</a>
+      <a href="https://www.npmjs.com/package/ferrolink">npm</a>
+    </MonoFooter>
   );
 }
 
@@ -134,27 +159,30 @@ function Article({ children }: { children: ReactNode }) {
 }
 const components = { table: FerraReadingTable, wrapper: Article };
 
+/**
+ * Every page wears the Monografie header and footer. The homepage reads on the
+ * Monografie page ground; documentation keeps the Ferra reading layout.
+ */
 export default function Root() {
-  const home = useArdoHref("/");
-  return (
-    <FerraPage className="ferra-site">
+  const path = useArdoPath();
+  const home = path === "/" || path === "";
+  const shell = (
+    <>
       <MarkDefs />
       <ArdoRoot
         className="ferra-ardo-shell"
         scrollMode="document"
-        header={<Header />}
+        header={<Header docs={!home} />}
         sidebar={false}
         footer={false}
         components={components}
       />
-      <FerraFooter product="ferrolink" home={home}>
-        <p>
-          Ferrolink v{site.version} · Apache-2.0 License ·{" "}
-          <a href="https://ardo-docs.dev">Built with Ardo</a> ·{" "}
-          <a href={WORKSHOP.openSource}>{WORKSHOP.company}</a> ·{" "}
-          <a href="https://ferramenta.dev">Ferramenta family</a>
-        </p>
-      </FerraFooter>
-    </FerraPage>
+      <Footer />
+    </>
+  );
+  return home ? (
+    <MonoPage className="fl-home">{shell}</MonoPage>
+  ) : (
+    <FerraPage className="ferra-site fl-docs">{shell}</FerraPage>
   );
 }
