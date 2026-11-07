@@ -204,7 +204,7 @@ pnpm test
 ## Website development
 
 The Ardo site in `homepage/` uses the shared Ferramenta theme: the Monografie
-page system on the homepage and the Ferra reading layout on documentation
+page system on the homepage and its reading layout on documentation
 pages. The CLI reference, Node reference, parser decision and changelog are
 generated from their canonical repository documents. Edit those sources, not
 the generated routes.
