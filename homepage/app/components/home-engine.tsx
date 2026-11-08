@@ -1,7 +1,6 @@
 import { ArdoLink as Link } from "ardo/runtime";
 import {
   MonoCredit,
-  MonoLeadIn,
   MonoPassage,
   MonoSection,
   MonoTerms,
@@ -60,13 +59,12 @@ function ScannerReading() {
     <>
       <MonoPassage note={{ term: note.title, children: note.body }}>
         <p>
-          <MonoLeadIn>A browser</MonoLeadIn> turns HTML into a tree of elements before it shows
-          anything, and a full HTML parser does the same work. A link checker needs a small part of
-          it: the attributes that hold addresses, every <code>id</code>, and the first{" "}
-          <code>{"<base>"}</code>. Ferrolink finds the files of the build with Ferralk,{" "}
-          {lowerFirst(ferralk.what)}, and reads the pages in parallel with Ferroni,{" "}
-          {lowerFirst(ferroni.what)}. One expression finds comments and start tags, a second splits
-          the attributes of the tags that matter.
+          A browser turns HTML into a tree of elements before it shows anything, and a full HTML
+          parser does the same work. A link checker needs a small part of it: the attributes that
+          hold addresses, every <code>id</code>, and the first <code>{"<base>"}</code>. Ferrolink
+          finds the files of the build with Ferralk, {lowerFirst(ferralk.what)}, and reads the pages
+          in parallel with Ferroni, {lowerFirst(ferroni.what)}. One expression finds comments and
+          start tags, a second splits the attributes of the tags that matter.
         </p>
       </MonoPassage>
       <MonoPassage
@@ -183,8 +181,6 @@ export function Fit() {
       </MonoWide>
       <MonoPassage note={{ term: note.title, children: note.body }}>
         <p>
-          <MonoLeadIn>Ferrolink is young.</MonoLeadIn> Version {version} is an early release. Before
-          1.0, a breaking change comes with a new minor version and is called out in the changelog.
           The JavaScript API and the Vite plugin are the supported contract; the Rust library serves
           the command line and the npm package and can change in any minor release. This website is
           checked by Ferrolink on every build.

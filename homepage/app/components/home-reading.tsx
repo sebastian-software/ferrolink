@@ -1,7 +1,6 @@
 import { ArdoLink as Link } from "ardo/runtime";
 import {
   MonoCredit,
-  MonoLeadIn,
   MonoPassage,
   MonoSection,
   MonoTerms,
@@ -55,11 +54,10 @@ export function Explainer() {
         }}
       >
         <p>
-          <MonoLeadIn>Documentation and blogs</MonoLeadIn> are often built by a static site
-          generator: a program that turns Markdown into a folder of HTML pages, images and scripts.
-          A host such as GitHub Pages or Netlify then serves that folder as it is. Every page in it
-          points at others: a link to the next chapter, an image, a stylesheet, a jump to a heading
-          further down.
+          Documentation and blogs are often built by a static site generator: a program that turns
+          Markdown into a folder of HTML pages, images and scripts. A host such as GitHub Pages or
+          Netlify then serves that folder as it is. Every page in it points at others: a link to the
+          next chapter, an image, a stylesheet, a jump to a heading further down.
         </p>
       </MonoPassage>
       <MonoPassage
@@ -104,11 +102,11 @@ export function Example() {
         }}
       >
         <p>
-          <MonoLeadIn>Each issue names</MonoLeadIn> the file and line it was found on, what is wrong
-          and the reference as it was written. In a pipeline, that is enough to stop the deployment:
-          the command line exits with 1 when it finds issues, and the Vite plugin fails the build.
-          The page below sits on a site served under <code>/docs/</code>, so a link to{" "}
-          <code>/guide/setup</code> leaves it, however right it looks.
+          Each issue names the file and line it was found on, what is wrong and the reference as it
+          was written. In a pipeline, that is enough to stop the deployment: the command line exits
+          with 1 when it finds issues, and the Vite plugin fails the build. The page below sits on a
+          site served under <code>/docs/</code>, so a link to <code>/guide/setup</code> leaves it,
+          however right it looks.
         </p>
       </MonoPassage>
       <ExampleSpecimen />
@@ -134,12 +132,11 @@ export function Paths() {
         }}
       >
         <p>
-          <MonoLeadIn>GitHub Pages, Netlify</MonoLeadIn>, Cloudflare Pages and most static servers
-          agree on how an address becomes a file. An address that ends in a slash serves the
-          folder’s <code>index.html</code>. Any other address serves the exact file if there is one,
-          then the same name with <code>.html</code>, then a folder’s <code>index.html</code>.
-          Ferrolink resolves every reference by the same rules, so it finds what a visitor would
-          find.
+          GitHub Pages, Netlify, Cloudflare Pages and most static servers agree on how an address
+          becomes a file. An address that ends in a slash serves the folder’s{" "}
+          <code>index.html</code>. Any other address serves the exact file if there is one, then the
+          same name with <code>.html</code>, then a folder’s <code>index.html</code>. Ferrolink
+          resolves every reference by the same rules, so it finds what a visitor would find.
         </p>
       </MonoPassage>
       <MonoPassage
@@ -209,12 +206,12 @@ export function Versions() {
         }}
       >
         <p>
-          <MonoLeadIn>An archived version</MonoLeadIn> was correct when it shipped, and nobody will
-          edit it again. Its links may point at pages that have moved on since. A check that fails
-          on every old page teaches a team to stop reading the check, so Ferrolink offers two
-          separate choices. <code>exclude</code> skips the links inside matching pages, while links
-          into them still have their anchors checked. <code>assumePresent</code> accepts links to
-          paths that are deployed separately, without looking for them in the build.
+          An archived version was correct when it shipped, and nobody will edit it again. Its links
+          may point at pages that have moved on since. A check that fails on every old page teaches
+          a team to stop reading the check, so Ferrolink offers two separate choices.{" "}
+          <code>exclude</code> skips the links inside matching pages, while links into them still
+          have their anchors checked. <code>assumePresent</code> accepts links to paths that are
+          deployed separately, without looking for them in the build.
         </p>
       </MonoPassage>
       <HostFiles />
