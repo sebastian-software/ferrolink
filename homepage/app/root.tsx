@@ -8,10 +8,10 @@ import {
   ArdoRootLayout,
   ArdoTOC,
 } from "ardo/ui";
-import { MarkDefs } from "ferramenta-family";
 import touchIcon from "ferramenta-family/ferra-assets/ferrolink/apple-touch-icon.png?url";
 import favicon from "ferramenta-family/ferra-assets/ferrolink/favicon.ico?url";
 import {
+  MarkDefs,
   MonoFooter,
   MonoGuideNavigation,
   MonoHeader,

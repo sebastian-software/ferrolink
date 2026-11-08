@@ -6,10 +6,3 @@
 .fl-home .mono-axis > .mono-wide + :is(p, .mono-row) {
   margin-top: 48px;
 }
-
-/* Monografie sets highlighted code on its warm sheet, where the light theme's
-   comment grey falls just short of 4.5:1. Comments take the darker grey of the
-   same theme until the package carries the fix. */
-.fl-docs .ardo-code-block span[style*="--shiki-light:#6E7781"] {
-  color: #59636e !important;
-}
