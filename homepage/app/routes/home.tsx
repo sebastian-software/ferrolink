@@ -59,7 +59,6 @@ function Opening() {
     <MonoOpening
       product="ferrolink"
       instrumentLabel="Ferrolink's instrument: two steel posts on a shared base, joined by a chain of three links over a steel rail. The middle link is rust-brown and carries a small square gauge at the point where it holds the other two."
-      caption="A continuity gauge: interlocking links between two documents, checked at the joint where one reaches the other."
       kicker={`Ferrolink ${releaseLine}, ${lowerFirst(ferrolink.what)}`}
       title="Catch broken links before they go live."
       subtitle="Check the build your visitors will get."
