@@ -43,7 +43,7 @@ for (const page of expectedPages) {
     html.includes('class="mono mono-docs fl-docs"'),
     `${page} should read on the Monografie documentation page.`,
   );
-  for (const fragment of ["mono-ardo-shell", "mono-reading-navigation", "mono-prose"]) {
+  for (const fragment of ["mono-ardo-shell", "ardo-sidebar", "mono-prose"]) {
     assert(
       html.includes(fragment),
       `${page} is missing the Monografie reading layout (${fragment})`,
