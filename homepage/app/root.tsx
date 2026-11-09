@@ -47,9 +47,6 @@ const links = [
   <NavLink key="changelog" to="/changelog">
     Changelog
   </NavLink>,
-  <a key="github" href="https://github.com/sebastian-software/ferrolink">
-    GitHub
-  </a>,
 ];
 
 /** Every page on Monografie's Ardo shell; the documentation adds its menu, search and reading layout. */
@@ -60,6 +57,7 @@ export default function Root() {
       name="Ferrolink"
       release={site.version}
       links={links}
+      repository="https://github.com/sebastian-software/ferrolink"
       sections={sections}
       homeClassName="fl-home"
       docsClassName="fl-docs"
