@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.2](https://github.com/sebastian-software/ferrolink/compare/ferrolink-v0.2.1...ferrolink-v0.2.2) (2026-11-10)
+
+
+### Features
+
+* GitHub as the header's mark, on Ardo 6.4 ([#25](https://github.com/sebastian-software/ferrolink/issues/25)) ([00d3a54](https://github.com/sebastian-software/ferrolink/commit/00d3a54bb11ad72b408960158de695ab89fdffee))
+
+
+### Bug Fixes
+
+* keep table text off the frame ([#27](https://github.com/sebastian-software/ferrolink/issues/27)) ([aa73dd5](https://github.com/sebastian-software/ferrolink/commit/aa73dd597d4248df6f22966cfc7d730675e97e9d))
+* resolve root-relative links against external bases ([#30](https://github.com/sebastian-software/ferrolink/issues/30)) ([8e7fd5a](https://github.com/sebastian-software/ferrolink/commit/8e7fd5a95dc3487547b014e5b1a368cc93e49862))
+
 ## [0.2.1](https://github.com/sebastian-software/ferrolink/compare/ferrolink-v0.2.0...ferrolink-v0.2.1) (2026-10-23)
 
 
