@@ -1,6 +1,5 @@
 {
   "version": "0.2",
-  "ignorePaths": [".standards/"],
   "words": [
     "Ardo",
     "Dogfood",
@@ -16,7 +15,6 @@
     "oxfmt",
     "oxlint",
     "pnpm",
-    "repometa",
     "tokenizer",
     "Tokenizer",
     "tokenizers"
