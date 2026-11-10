@@ -169,9 +169,6 @@ importers:
       '@napi-rs/cli':
         specifier: ^3.10.9
         version: 3.10.9(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@types/node@24.19.2)(supports-color@9.4.0)
-      '@sebastian-software/standards':
-        specifier: 0.13.0
-        version: 0.13.0
       '@types/node':
         specifier: ^24.19.2
         version: 24.19.2
@@ -1643,11 +1640,6 @@ packages:
 
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
-
-  '@sebastian-software/standards@0.13.0':
-    resolution: {integrity: sha512-jBK0S1NeaKgBbrzfMP1CnSwIigILFPEbexHt7gldrZdiOGDLp6MRuNgkVLcQ4NFW4e0Ov0KsQOuLTNk0TGXKxg==}
-    engines: {node: '>=24.0.0'}
-    hasBin: true
 
   '@sindresorhus/base62@1.0.0':
     resolution: {integrity: sha512-TeheYy0ILzBEI/CO55CP6zJCSdSWeRtGnHy8U8dWSUH4I68iqTsy7HkMktR4xakThc9jotkPQUXT4ITdbV7cHA==}
@@ -5352,8 +5344,6 @@ snapshots:
     optional: true
 
   '@rolldown/pluginutils@1.0.1': {}
-
-  '@sebastian-software/standards@0.13.0': {}
 
   '@sindresorhus/base62@1.0.0': {}
 

@@ -1,6 +1,5 @@
 {
   "version": "0.2",
-  "ignorePaths": [".standards/"],
   "words": [
     "Ardo",
     "ferrolink",
@@ -16,7 +15,6 @@
     "pnpm",
     "prerender",
     "prerendering",
-    "prerenders",
-    "repometa"
+    "prerenders"
   ]
 }
