@@ -141,7 +141,7 @@ jobs:
       matrix: ${{ steps.platforms.outputs.matrix }}
     steps:
       - id: platforms
-        uses: sebastian-software/standards/.github/actions/napi-matrix@a840766444dbb0e421f1f1868c48bee315ead769 # v0.13.0
+        uses: sebastian-software/project-infra/.github/actions/napi-matrix@c97d8db475ce5abb7e7ab7b0ac22e249346b9fab # v0.3.0
         with:
           package: ferrolink
 
@@ -206,81 +206,3 @@ jobs:
       - if: ${{ matrix.id == 'linux-x64-gnu' }}
         name: Test the Vite plugin with Vite 7
         run: pnpm add --save-dev vite@7 && pnpm test
-
-  standards:
-    name: Standards / Consistency
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: "Guard: agent step not yet completed for this PR"
-        run: test ! -f .standards/pending.json
-
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        with:
-          # This repository has no root package.json to read `packageManager`
-          # from, so the pnpm version is spelled out here, as in Ferroni.
-          version: 12.11.2
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-
-      # The marker guard needs `node`, so it sits below the toolchain setup
-      # rather than beside the pending guard it complements.
-      # `.standards/blocked.json` records an agent run that pushed a result it
-      # could not validate. `blocking: true` is the alignment class, with two
-      # members: the pinned CLI does not ship the stamped manifest version, or
-      # the pin is not an exact version literal. Either way `standards check`
-      # exits 3 and the pull request must not merge (only the stamp member also
-      # makes `apply` and `sync` refuse to write). A non-blocking marker is
-      # context for the reviewer — the failures it lists are reported by this
-      # workflow's own lanes. The marker is parsed rather than matched line by
-      # line: JSON may put `"blocking":` and `true` on separate lines, and a guard
-      # whose whole purpose is to fail closed must fail on a marker it cannot
-      # read at all.
-      # `node` rather than `jq`, which the Forgejo node image may lack; the
-      # schema is `BlockedState` in @sebastian-software/standards.
-      - name: "Guard: no blocking agent findings for this PR"
-        run: |
-          node -e "
-          const { existsSync, readFileSync } = require('node:fs');
-          const file = '.standards/blocked.json';
-          if (!existsSync(file)) { process.exit(0); }
-          const raw = readFileSync(file, 'utf8');
-          console.log(raw);
-          const fail = (detail) => { console.error('Refusing to pass ' + file + ': ' + detail); process.exit(1); };
-          let state;
-          try { state = JSON.parse(raw); } catch (error) { fail('it is not valid JSON — ' + error.message); }
-          if (typeof state !== 'object' || state === null || Array.isArray(state)) { fail('it is not a JSON object.'); }
-          const orNull = (value, type) => value === null || typeof value === type;
-          const broken = [
-            ['schemaVersion must be 1', state.schemaVersion !== 1],
-            ['blocking must be a boolean', typeof state.blocking !== 'boolean'],
-            ['reason must be a string', typeof state.reason !== 'string'],
-            ['detectedAt must be a string', typeof state.detectedAt !== 'string'],
-            ['expectedStandardsVersion must be a number', typeof state.expectedStandardsVersion !== 'number'],
-            ['observedStandardsVersion must be a number or null', !orNull(state.observedStandardsVersion, 'number')],
-            ['expectedCliVersion must be a string or null', !orNull(state.expectedCliVersion, 'string')],
-            ['observedCliVersion must be a string or null', !orNull(state.observedCliVersion, 'string')],
-            ['failedChecks must be an array of strings', !Array.isArray(state.failedChecks) || !state.failedChecks.every((entry) => typeof entry === 'string')],
-            ['retry must be a string', typeof state.retry !== 'string'],
-          ].filter((entry) => entry[1]).map((entry) => entry[0]);
-          if (broken.length > 0) { fail('it does not match the documented schema — ' + broken.join('; ')); }
-          if (state.blocking) { fail('the agent could not validate its result.'); }
-          console.log('The agent marker is non-blocking; its findings are reviewer context.');
-          "
-
-      # A Rust-only repository has no lockfile to pin the CLI in, so the
-      # version is pinned here and Renovate's regex manager moves it (see
-      # ../rust/README.md). An unpinned `dlx` would execute whatever was
-      # published minutes ago, with the job's token.
-      #
-      # minimum-release-age=0 stays: pnpm 11 defaults minimumReleaseAge to 1440
-      # (24h), so without the bypass a pin that was raised on the day of a
-      # standards release cannot resolve at all.
-      #
-      # The release pin marker is for the standards repository:
-      # release-please rewrites the pin below whenever it bumps package.json,
-      # so the shipped reference never names a CLI older than its own stamp.
-      # In a consumer repository the marker is inert and Renovate owns the pin.
-      - run: pnpm --config.minimum-release-age=0 dlx @sebastian-software/standards@0.13.0 check

@@ -1,5 +1,4 @@
-# Seeded by @sebastian-software/standards. Widen it with narrow, reviewed
-# exceptions — never by loosening the org allow-list below.
+# Keep exceptions narrow and reviewed beside the affected rule.
 
 [graph]
 all-features = true
