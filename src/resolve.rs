@@ -141,6 +141,9 @@ impl Resolver {
     }
 
     fn relative(&self, reference: &str, document: &DocumentBase) -> Resolved {
+        let DocumentBase::Internal(base) = document else {
+            return Resolved::External;
+        };
         let (before_fragment, fragment) = match reference.split_once('#') {
             Some((before, fragment)) => (before, Some(fragment)),
             None => (reference, None),
@@ -156,9 +159,6 @@ impl Resolver {
         let absolute = if path.starts_with('/') {
             path.into_owned()
         } else {
-            let DocumentBase::Internal(base) = document else {
-                return Resolved::External;
-            };
             if path.is_empty() {
                 base.clone()
             } else {
@@ -400,8 +400,11 @@ mod tests {
         );
         let external = resolver.document_base("/guide/", Some("https://cdn.example.org/"));
         assert_eq!(resolver.resolve("types", &external), Resolved::External);
+        assert_eq!(resolver.resolve("/types", &external), Resolved::External);
+        assert_eq!(resolver.resolve("#types", &external), Resolved::External);
+        let resolver = Resolver::new("/", Some("https://example.org/"));
         assert_eq!(
-            resolver.resolve("/types", &external),
+            resolver.resolve("https://example.org/types", &external),
             internal("types", None, "/types")
         );
     }

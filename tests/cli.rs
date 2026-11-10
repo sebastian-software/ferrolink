@@ -238,3 +238,27 @@ fn a_missing_directory_exits_with_two() {
 fn write(dir: &Path, name: &str, contents: &str) {
     std::fs::write(dir.join(name), contents).unwrap();
 }
+
+#[test]
+fn external_base_links_do_not_become_missing_local_files() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "index.html",
+        r##"<base href="https://cdn.example.org/"><a href="/types">Root</a><a href="types">Relative</a><a href="#types">Fragment</a><a href="https://example.org/missing">Local</a>"##,
+    );
+    let output = ferrolink(&[
+        "check",
+        dir.path().to_str().unwrap(),
+        "--site-url",
+        "https://example.org/",
+        "--format",
+        "json",
+    ]);
+    assert_eq!(output.status.code(), Some(1));
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["summary"]["external_links"], 3);
+    assert_eq!(report["summary"]["internal_links"], 1);
+    assert_eq!(report["issues"].as_array().unwrap().len(), 1);
+    assert_eq!(report["issues"][0]["target"], "/missing");
+}
