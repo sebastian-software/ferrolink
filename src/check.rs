@@ -5,11 +5,10 @@ use std::fmt;
 use std::fs;
 use std::io;
 use std::num::NonZeroUsize;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Instant;
 
 use ferralk::ferralk_glob::{PatternOptions, PatternSet, PatternSetError};
-use ferralk::{WalkOptions, Walker};
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 
@@ -86,6 +85,8 @@ pub enum Error {
     AssumePresent(PatternSetError),
     /// A file could not be read.
     Read(PathBuf, io::Error),
+    /// The audit site URL is not a public HTTP(S) base URL.
+    InvalidSiteUrl,
     /// The worker pool could not be started.
     Threads(rayon::ThreadPoolBuildError),
 }
@@ -98,6 +99,7 @@ impl fmt::Display for Error {
             Error::Exclude(error) => write!(f, "invalid exclude pattern: {error}"),
             Error::AssumePresent(error) => write!(f, "invalid assume-present pattern: {error}"),
             Error::Read(path, error) => write!(f, "cannot read {}: {error}", path.display()),
+            Error::InvalidSiteUrl => write!(f, "invalid site URL: expected an HTTP(S) base URL"),
             Error::Threads(error) => write!(f, "cannot start worker threads: {error}"),
         }
     }
@@ -109,7 +111,7 @@ impl std::error::Error for Error {
             Error::Root(_, error) | Error::Read(_, error) => Some(error),
             Error::Exclude(error) | Error::AssumePresent(error) => Some(error),
             Error::Threads(error) => Some(error),
-            Error::Walk(_) => None,
+            Error::Walk(_) | Error::InvalidSiteUrl => None,
         }
     }
 }
@@ -122,12 +124,7 @@ impl std::error::Error for Error {
 /// exclude pattern is invalid. Broken links are not errors; they are the
 /// [`Report`]'s issues.
 pub fn check(config: &Config) -> Result<Report, Error> {
-    let metadata =
-        fs::metadata(&config.root).map_err(|error| Error::Root(config.root.clone(), error))?;
-    if !metadata.is_dir() {
-        let error = io::Error::new(io::ErrorKind::NotADirectory, "not a directory");
-        return Err(Error::Root(config.root.clone(), error));
-    }
+    Site::validate_root(&config.root)?;
     let exclude = patterns(&config.exclude).map_err(Error::Exclude)?;
     let assume_present =
         AssumedTargets::new(&config.assume_present).map_err(Error::AssumePresent)?;
@@ -149,12 +146,6 @@ fn patterns(globs: &[String]) -> Result<Option<PatternSet>, PatternSetError> {
     PatternSet::new(globs, PatternOptions::walker()).map(Some)
 }
 
-struct Page {
-    key: Box<str>,
-    path: PathBuf,
-    checked: bool,
-}
-
 fn run(
     config: &Config,
     exclude: Option<&PatternSet>,
@@ -162,35 +153,8 @@ fn run(
     threads: usize,
 ) -> Result<Report, Error> {
     let started = Instant::now();
-    let walk = Walker::new(&config.root)
-        .match_hidden(true)
-        .threads(threads)
-        .options(WalkOptions::default().files_only(true))
-        .collect()
-        .map_err(|error| Error::Walk(describe(&error)))?;
-    let (entries, errors) = walk.into_parts();
-    if let Some(error) = errors.first() {
-        return Err(Error::Walk(describe(error)));
-    }
-    let mut keys = Vec::with_capacity(entries.len());
-    let mut pages = Vec::new();
-    for entry in &entries {
-        let relative = entry.relative_path();
-        let key = site_key(relative);
-        if is_html(&key) {
-            let checked = !exclude.is_some_and(|set| set.is_match_glob_path(key.as_bytes()));
-            pages.push(Page {
-                key: key.clone(),
-                path: relative.to_path_buf(),
-                checked,
-            });
-        }
-        keys.push(key);
-    }
-    // Walk order depends on thread scheduling; sorting keeps the report and
-    // the scan order reproducible.
-    pages.sort_unstable_by(|a, b| a.key.cmp(&b.key));
-    let site = Site::new(keys);
+    let (site, pages) = Site::walk(&config.root, threads)?;
+    let checked = |key: &str| !exclude.is_some_and(|set| set.is_match_glob_path(key.as_bytes()));
     let walk_done = Instant::now();
 
     let scans = pages
@@ -225,11 +189,14 @@ fn run(
     let mut outcome = pages
         .par_iter()
         .zip(&scans)
-        .filter(|(page, _)| page.checked)
+        .filter(|(page, _)| checked(&page.key))
         .map(|(page, scan)| {
             let base =
                 resolver.document_base(&resolver.page_url(&page.key), scan.base_href.as_deref());
-            checker.check_links(&page.key, &scan.links, &base)
+            Outcome {
+                checked_pages: 1,
+                ..checker.check_links(&page.key, &scan.links, &base)
+            }
         })
         .reduce(Outcome::default, Outcome::merge);
     if config.deploy_files {
@@ -243,13 +210,12 @@ fn run(
     outcome.issues.sort_unstable_by(|a, b| {
         (&a.source, a.line, &a.href, a.kind).cmp(&(&b.source, b.line, &b.href, b.kind))
     });
-    let checked_pages = pages.iter().filter(|page| page.checked).count();
     let done = Instant::now();
 
     Ok(Report {
         summary: Summary {
             pages: pages.len(),
-            checked_pages,
+            checked_pages: outcome.checked_pages,
             files: site.len(),
             internal_links: outcome.internal,
             external_links: outcome.external,
@@ -281,6 +247,7 @@ struct Outcome {
     internal: usize,
     external: usize,
     skipped: usize,
+    checked_pages: usize,
 }
 
 impl Outcome {
@@ -289,6 +256,7 @@ impl Outcome {
         self.internal += other.internal;
         self.external += other.external;
         self.skipped += other.skipped;
+        self.checked_pages += other.checked_pages;
         self
     }
 }
@@ -408,29 +376,6 @@ fn has_anchor(page: &PageScan, fragment: &str) -> bool {
     }
     let decoded = percent_encoding::percent_decode_str(fragment).decode_utf8_lossy();
     page.anchors.contains(&*decoded) || decoded.eq_ignore_ascii_case("top")
-}
-
-fn site_key(relative: &Path) -> Box<str> {
-    let mut key = String::new();
-    for component in relative.components() {
-        if !key.is_empty() {
-            key.push('/');
-        }
-        key.push_str(&component.as_os_str().to_string_lossy());
-    }
-    key.into()
-}
-
-fn is_html(key: &str) -> bool {
-    let extension = key.rsplit_once('.').map_or("", |(_, extension)| extension);
-    extension.eq_ignore_ascii_case("html") || extension.eq_ignore_ascii_case("htm")
-}
-
-fn describe(error: &dyn std::error::Error) -> String {
-    match error.source() {
-        Some(cause) => format!("{error}: {cause}"),
-        None => error.to_string(),
-    }
 }
 
 fn millis(duration: std::time::Duration) -> f64 {

@@ -12,7 +12,8 @@ ferrolink reads the output directory of a static site build and checks that
 every link, asset reference, and `#fragment` points at something the build
 contains. It parses every page in parallel, resolves references the way a
 browser does, and maps URLs onto files the way static hosts do. It needs no
-server and no network.
+server and no network. The Rust CLI also audits sitemaps, canonicals, and
+`noindex` directives before deployment.
 
 It was built to gate releases and deployments of
 [Ardo](https://github.com/sebastian-software/ardo) documentation sites, and
@@ -107,6 +108,57 @@ take globs relative to the build directory. An `--assume-present` glob with a
 leading `/` matches the absolute URL path instead, base path included, and so
 also covers paths outside the base, such as `/blog/**` for another app on the
 same host.
+
+### Audit a static build for search
+
+From a repository checkout, point the Rust CLI at the finished build and
+give it the public site URL, including any deployment path.
+
+```bash
+cargo run --release --locked -- audit build/client --site-url https://example.org/ardo/ --format json
+```
+
+The audit reads `sitemap.xml`, `sitemap-index.xml`, or `sitemap_index.xml`
+and follows local XML sitemap indexes. It reports malformed XML, invalid or
+duplicate URLs, and targets absent from the build. For each HTML page in a
+sitemap, it checks for a matching canonical link in the document head and
+detects `noindex` or `none` in `robots` and `googlebot` meta tags. A page
+marked `noindex` can stay in the build outside the sitemap.
+
+The audit also checks malformed or multiple canonical links and canonicals
+that point to missing or non-indexable pages within this deployment. Relative
+canonical links resolve against the page URL and its first `base href`, if
+present.
+
+JSON output contains `summary` and an `issues` array. Each issue has a stable
+`code`, a build-relative `source`, a one-based `line` (zero for a missing
+element or file), a nullable `url`, and a human-readable `message`. Use the code
+for CI automation. Exit status is `0` for a clean audit, `1` for findings, and
+`2` when the audit cannot run. The audit works offline against the generated
+files.
+
+### Compare with Search Quality Kit
+
+Ferrolink coverage describes this source tree. A dash marks a feature gap.
+Compare against [Search Quality Kit’s check catalog](https://github.com/silesiansolutions/search-quality-kit/blob/47dc9a8870b4b43cf95fa63a7501a76bd2abadff/docs/checks.md)
+and [CI guide](https://github.com/silesiansolutions/search-quality-kit/blob/47dc9a8870b4b43cf95fa63a7501a76bd2abadff/docs/ci.md).
+
+| Capability | Ferrolink | Search Quality Kit |
+| --- | --- | --- |
+| Audit runtime | Native Rust CLI | Node.js 24 or newer |
+| Audit input | Static build directory | Static build directory or live HTTP crawl |
+| Links and assets | Local targets, cross-page fragments, and deployment paths | Local routes and assets, plus HTTP checks in crawl mode |
+| Sitemaps | XML and indexes, duplicate URLs, missing local targets | XML and indexes, robots.txt discovery, lastmod validation |
+| Canonicals | Declaration and local target checks, required and matching on sitemap pages | Declaration and origin checks, sitemap consistency, and HTTP status and redirect checks |
+| Noindex | Conflicts on sitemap and local canonical targets using HTML meta tags | HTML meta tags and HTTP headers on audited pages, plus sitemap conflicts |
+| Robots.txt policy | — | Syntax, crawler access, and sitemap declarations |
+| Hreflang | Local alternate URL targets | Language codes, reciprocal and self references, and target consistency |
+| Link graph and duplicates | — | Orphan pages, link text, and exact duplicate content |
+| Metadata and structured data | Local Open Graph URL and Twitter image targets | Titles, descriptions, Open Graph, and JSON-LD |
+| Delivered HTML and accessibility | — | Basic HTML, accessibility, and performance checks |
+| Agent discovery | — | llms.txt and declarative WebMCP checks |
+| Redirects | Destinations in static deployment files and HTML refresh tags | Redirect chains, loops, and broken destinations over HTTP |
+| CI reports and gates | Text and JSON, stable audit rule IDs, and exit status | Text, JSON, Markdown, and SARIF, plus baselines, suppressions, and a GitHub Action |
 
 ### How URLs map to files
 

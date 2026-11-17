@@ -41,7 +41,14 @@ const nodeVersions = node.split("||").map((range) => {
   if (!major || !minor) throw new Error(`Cannot read the Node.js range ${node}.`);
   return `${major}.${minor}+`;
 });
-await writeData("site.json", { version, rustVersion, license, nodeVersions });
+const readme = await readFile(new URL("README.md.src", repository), "utf8");
+await writeData("site.json", {
+  version,
+  rustVersion,
+  license,
+  nodeVersions,
+  auditComparison: readAuditComparison(readme),
+});
 const labels = {
   guide: "Guide",
   reference: "Reference",
@@ -61,6 +68,36 @@ async function writeData(name, value) {
   const result = await format(name, JSON.stringify(value));
   if (result.errors.length) throw new Error(`Cannot format ${name}`);
   await writeFile(new URL(name, data), result.code);
+}
+
+/** The README owns the plain-text comparison cells shown on both surfaces. */
+function readAuditComparison(markdown) {
+  const columns = ["Capability", "Ferrolink", "Search Quality Kit"];
+  const lines = markdown.split("\n");
+  const heading = lines.findIndex((line) => comparisonCells(line).join("|") === columns.join("|"));
+  if (heading === -1) {
+    throw new Error("README.md.src is missing the Search Quality Kit comparison.");
+  }
+  const rows = [];
+  for (const line of lines.slice(heading + 2)) {
+    if (!line.startsWith("|")) break;
+    const [capability, ferrolink, kit, extra] = comparisonCells(line);
+    if (!capability || !ferrolink || !kit || extra !== undefined) {
+      throw new Error("The Search Quality Kit comparison needs three plain-text cells per row.");
+    }
+    rows.push({ capability, ferrolink, kit });
+  }
+  if (rows.length === 0) {
+    throw new Error("The Search Quality Kit comparison is empty.");
+  }
+  return { columns, rows };
+}
+
+function comparisonCells(line) {
+  return line
+    .split("|")
+    .slice(1, -1)
+    .map((cell) => cell.trim());
 }
 
 function rewriteLinks(markdown, source) {

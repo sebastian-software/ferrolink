@@ -167,22 +167,28 @@ impl Resolver {
             }
         };
         let url = remove_dot_segments(&absolute).into_owned();
-        let site_relative = if let Some(rest) = url.strip_prefix(&self.base_path) {
-            rest
-        } else if self.base_path.len() > 1 && url == self.base_path[..self.base_path.len() - 1] {
-            // `/ardo` redirects to `/ardo/` on every static host.
-            ""
-        } else {
+        let Some(path) = self.site_relative_path(&url) else {
             return Resolved::OutsideBase { url };
         };
-        let path = percent_decode_str(site_relative)
-            .decode_utf8_lossy()
-            .into_owned();
+        let path = path.into_owned();
         Resolved::Internal {
             path,
             fragment: fragment.map(str::to_owned),
             url,
         }
+    }
+
+    /// Maps an absolute, normalized URL path into the deployment.
+    pub(crate) fn site_relative_path<'a>(&self, url: &'a str) -> Option<Cow<'a, str>> {
+        let relative = if let Some(rest) = url.strip_prefix(&self.base_path) {
+            rest
+        } else if self.base_path.len() > 1 && url == self.base_path.trim_end_matches('/') {
+            // `/ardo` redirects to `/ardo/` on every static host.
+            ""
+        } else {
+            return None;
+        };
+        Some(percent_decode_str(relative).decode_utf8_lossy())
     }
 }
 

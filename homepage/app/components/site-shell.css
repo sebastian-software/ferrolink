@@ -6,3 +6,23 @@
 .fl-home .mono-axis > .mono-wide + :is(p, .mono-row) {
   margin-top: 48px;
 }
+
+/* Three prose columns can wrap and stay visible together on narrow screens. */
+.fl-home .fl-audit-comparison :is(th, td) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .fl-home .fl-audit-comparison {
+    table-layout: fixed;
+  }
+
+  .fl-home .fl-audit-comparison thead th:first-child {
+    width: 31%;
+  }
+
+  .fl-home .fl-audit-comparison :is(th, td):not(:last-child) {
+    padding-inline-end: 8px;
+  }
+}
