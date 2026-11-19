@@ -10,6 +10,7 @@ use super::Lines;
 pub(super) struct Metadata {
     pub base: Option<String>,
     pub canonicals: Vec<Canonical>,
+    pub alternates: Vec<Alternate>,
     pub noindex: bool,
     pub links: Vec<String>,
     pub titles: Vec<TextElement>,
@@ -18,6 +19,12 @@ pub(super) struct Metadata {
 }
 
 pub(super) struct Canonical {
+    pub href: String,
+    pub line: u32,
+}
+
+pub(super) struct Alternate {
+    pub language: String,
     pub href: String,
     pub line: u32,
 }
@@ -87,8 +94,18 @@ pub(super) fn scan(html: &[u8], collect_links: bool) -> Metadata {
                     metadata.base = attr(&tag, b"href").map(|value| value.into_owned());
                 }
                 b"link" if in_head => {
-                    if attr(&tag, b"rel").is_some_and(|rel| has_token(&rel, "canonical")) {
+                    let rel = attr(&tag, b"rel").unwrap_or_default();
+                    if has_token(&rel, "canonical") {
                         metadata.canonicals.push(Canonical {
+                            href: attr(&tag, b"href").unwrap_or_default().into_owned(),
+                            line: lines.at(tag.span.start),
+                        });
+                    }
+                    if has_token(&rel, "alternate")
+                        && let Some(language) = attr(&tag, b"hreflang")
+                    {
+                        metadata.alternates.push(Alternate {
+                            language: language.into_owned(),
                             href: attr(&tag, b"href").unwrap_or_default().into_owned(),
                             line: lines.at(tag.span.start),
                         });
