@@ -613,3 +613,56 @@ fn audits_titles_and_optional_descriptions_on_sitemap_html_pages() {
         ]
     );
 }
+
+#[test]
+fn checks_only_embedded_json_ld_syntax_in_head_and_body() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    write(
+        root,
+        "sitemap.xml",
+        "<urlset><url><loc>https://example.org/</loc></url></urlset>",
+    );
+    write(
+        root,
+        "index.html",
+        r#"<!doctype html>
+<head><title>Guide</title><link rel="canonical" href="/">
+<script type="application/ld+json">[{"label":"A &amp; B","number":1e400},null]</script>
+<script type=" Application/LD+JSON ; charset=utf-8 ">true</script>
+</head><body>
+<script
+  type="application/ld+json">
+  {"missing":
+  }
+</script>
+<script type="application/ld+json">true false</script>
+<script type="application/ld+json">   </script>
+<script type="application/json">{ordinary data</script>
+<script>window.example = "ordinary JavaScript";</script>
+<template><script type="application/ld+json">not rendered</script></template>
+<!-- <script type="application/ld+json">only a comment</script> -->
+</body>"#,
+    );
+    write(
+        root,
+        "unlisted.html",
+        r#"<script type="application/ld+json">{"bad":"\x"}</script>"#,
+    );
+
+    let issues = report(root, "https://example.org/", 1);
+    assert_eq!(
+        findings(&issues),
+        [
+            ("json_ld_syntax_invalid", "index.html", 9),
+            ("json_ld_syntax_invalid", "index.html", 11),
+            ("json_ld_syntax_invalid", "index.html", 12),
+            ("json_ld_syntax_invalid", "unlisted.html", 1),
+        ]
+    );
+    assert_eq!(issues["issues"][0]["url"], "https://example.org/");
+    assert_eq!(
+        issues["issues"][3]["url"],
+        "https://example.org/unlisted.html"
+    );
+}

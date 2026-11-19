@@ -48,6 +48,7 @@ pub enum Code {
     TitleMultiple,
     MetaDescriptionEmpty,
     MetaDescriptionMultiple,
+    JsonLdSyntaxInvalid,
 }
 
 /// A finding in a build file or the explicitly supplied robots.txt.
@@ -245,6 +246,17 @@ impl Audit<'_> {
 
     fn check_page_metadata(&mut self) {
         for (&source, page) in &self.pages {
+            let document_url = page.sitemap_url.as_ref().unwrap_or(&page.page_url);
+            self.issues
+                .extend(page.metadata.json_ld_errors.iter().map(|error| {
+                    issue(
+                        Code::JsonLdSyntaxInvalid,
+                        source,
+                        error.line,
+                        Some(document_url.as_str()),
+                        error.message.as_str(),
+                    )
+                }));
             let Some(url) = page.sitemap_url.as_ref().filter(|_| !page.metadata.noindex) else {
                 continue;
             };

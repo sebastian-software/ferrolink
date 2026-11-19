@@ -14,6 +14,7 @@ pub(super) struct Metadata {
     pub links: Vec<String>,
     pub titles: Vec<TextElement>,
     pub descriptions: Vec<TextElement>,
+    pub json_ld_errors: Vec<JsonLdError>,
 }
 
 pub(super) struct Canonical {
@@ -26,12 +27,35 @@ pub(super) struct TextElement {
     pub empty: bool,
 }
 
+pub(super) struct JsonLdError {
+    pub line: u32,
+    pub message: String,
+}
+
+struct JsonLdBlock {
+    body_line: u32,
+    content: Vec<u8>,
+}
+
+impl JsonLdBlock {
+    fn syntax_error(self) -> Option<JsonLdError> {
+        let text = String::from_utf8_lossy(&self.content);
+        let error = serde_json::from_str::<serde::de::IgnoredAny>(&text).err()?;
+        let offset = u32::try_from(error.line().saturating_sub(1)).unwrap_or(u32::MAX);
+        Some(JsonLdError {
+            line: self.body_line.saturating_add(offset),
+            message: format!("Invalid JSON-LD script body: {error}"),
+        })
+    }
+}
+
 pub(super) fn scan(html: &[u8], collect_links: bool) -> Metadata {
     let mut emitter = DefaultEmitter::<usize>::new_with_span();
     emitter.naively_switch_states(true);
     let mut metadata = Metadata::default();
     let mut in_head = true;
     let mut in_title = false;
+    let mut json_ld: Option<JsonLdBlock> = None;
     let mut templates = 0usize;
     let lines = Lines::new(html);
     for token in Tokenizer::new_with_emitter(html, emitter) {
@@ -43,8 +67,15 @@ pub(super) fn scan(html: &[u8], collect_links: bool) -> Metadata {
             }
             _ if templates != 0 => {}
             Token::EndTag(tag) if tag.name.as_slice() == b"title" => in_title = false,
-            Token::String(text) if in_title => {
-                if let Some(title) = metadata.titles.last_mut() {
+            Token::EndTag(tag) if tag.name.as_slice() == b"script" => {
+                metadata
+                    .json_ld_errors
+                    .extend(json_ld.take().and_then(JsonLdBlock::syntax_error));
+            }
+            Token::String(text) => {
+                if let Some(block) = &mut json_ld {
+                    block.content.extend_from_slice(&text.value);
+                } else if in_title && let Some(title) = metadata.titles.last_mut() {
                     title.empty &= String::from_utf8_lossy(&text.value).trim().is_empty();
                 }
             }
@@ -75,6 +106,12 @@ pub(super) fn scan(html: &[u8], collect_links: bool) -> Metadata {
                         empty: true,
                     });
                     in_title = true;
+                }
+                b"script" if attr(&tag, b"type").is_some_and(|value| is_json_ld(&value)) => {
+                    json_ld = Some(JsonLdBlock {
+                        body_line: lines.at(tag.span.end),
+                        content: Vec::new(),
+                    });
                 }
                 b"meta" => {
                     let name = attr(&tag, b"name").unwrap_or_default();
@@ -109,6 +146,18 @@ pub(super) fn scan(html: &[u8], collect_links: bool) -> Metadata {
         }
     }
     metadata
+        .json_ld_errors
+        .extend(json_ld.and_then(JsonLdBlock::syntax_error));
+    metadata
+}
+
+fn is_json_ld(value: &str) -> bool {
+    let mime_type = value
+        .split_once(';')
+        .map_or(value, |(mime_type, _)| mime_type);
+    mime_type
+        .trim_ascii()
+        .eq_ignore_ascii_case("application/ld+json")
 }
 
 fn attr<'a>(tag: &'a StartTag<usize>, name: &[u8]) -> Option<std::borrow::Cow<'a, str>> {

@@ -130,6 +130,11 @@ pages without `noindex`, the audit requires one nonempty title in the head.
 A meta description is optional. When present, it must contain text and appear
 once in the head.
 
+The audit validates JSON syntax in embedded `application/ld+json` script
+blocks throughout the built HTML. The `json_ld_syntax_invalid` finding
+locates the parse error in the HTML file. Schema.org and rich-result checks
+are tracked separately in the comparison below.
+
 The audit also checks malformed or multiple canonical links and canonicals
 that point to missing or non-indexable pages within this deployment. Relative
 canonical links resolve against the page URL and its first `base href`, if
@@ -206,7 +211,8 @@ and [CI guide](https://github.com/silesiansolutions/search-quality-kit/blob/47dc
 | Validate hreflang codes and return links | — | ✓ |
 | Check titles and meta descriptions | ✓ | ✓ |
 | Validate Open Graph metadata | — | ✓ |
-| Validate JSON-LD | — | ✓ |
+| Validate embedded JSON-LD syntax | ✓ | ✓ |
+| Check Schema.org and rich-result requirements | — | ✓ |
 | Find exact content duplicates | — | ✓ |
 | Flag HTML, accessibility, and performance issues | — | ✓ |
 | Check llms.txt and declarative WebMCP | — | ✓ |
