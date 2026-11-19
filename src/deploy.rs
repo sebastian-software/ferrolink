@@ -9,7 +9,8 @@
 use std::fs;
 use std::path::Path;
 
-use serde_json::Value;
+use rustc_hash::FxHashMap;
+use serde_json::value::RawValue;
 
 use crate::scan::RawLink;
 use crate::site::Site;
@@ -44,30 +45,18 @@ pub(crate) fn sources(root: &Path, site: &Site) -> std::io::Result<Vec<DeploySou
 
 /// Ardo's `versions.json`: `{ "current": "v6", "versions": [{ "path": "/v6/" }] }`.
 fn ardo_versions(text: &str) -> Vec<RawLink> {
-    let Ok(manifest) = serde_json::from_str::<Value>(text) else {
-        return Vec::new();
-    };
-    let Some(versions) = manifest.get("versions").and_then(Value::as_array) else {
-        return Vec::new();
-    };
-    let paths = versions
-        .iter()
-        .filter_map(|version| version.get("path")?.as_str());
-    json_links(text, paths, "versions.json[path]")
+    json_links(text, &["versions"], "path", "versions.json[path]", |_| true)
 }
 
 /// `vercel.json`: destinations of `redirects` and `rewrites`.
 fn vercel_config(text: &str) -> Vec<RawLink> {
-    let Ok(config) = serde_json::from_str::<Value>(text) else {
-        return Vec::new();
-    };
-    let destinations = ["redirects", "rewrites"]
-        .into_iter()
-        .filter_map(|section| config.get(section)?.as_array())
-        .flatten()
-        .filter_map(|rule| rule.get("destination")?.as_str())
-        .filter(|destination| is_plain_path(destination));
-    json_links(text, destinations, "vercel.json[destination]")
+    json_links(
+        text,
+        &["redirects", "rewrites"],
+        "destination",
+        "vercel.json[destination]",
+        is_plain_path,
+    )
 }
 
 /// Netlify and Cloudflare Pages `_redirects`: `from to [status]` per line.
@@ -95,30 +84,36 @@ fn is_plain_path(destination: &str) -> bool {
         && !destination.contains([':', '*', '(', '$'])
 }
 
-/// Turns JSON string values into links, locating each value's line by its
-/// next quoted occurrence in the source text.
-fn json_links<'a>(
+/// Reads string fields from arrays of rule objects. Borrowed raw values
+/// preserve the source location even when decoding changes the string.
+fn json_links(
     text: &str,
-    values: impl Iterator<Item = &'a str>,
+    sections: &[&str],
+    field: &str,
     origin: &'static str,
+    include: impl Fn(&str) -> bool,
 ) -> Vec<RawLink> {
-    let mut search_from = 0;
-    values
-        .map(|value| {
-            let quoted = format!("\"{value}\"");
-            let line = match text[search_from..].find(&quoted) {
-                Some(offset) => {
-                    let position = search_from + offset;
-                    search_from = position + quoted.len();
-                    line_at(text, position)
-                }
-                None => 0,
-            };
-            RawLink {
-                url: value.into(),
+    type Object<'a> = FxHashMap<String, &'a RawValue>;
+    let Ok(config) = serde_json::from_str::<Object<'_>>(text) else {
+        return Vec::new();
+    };
+    sections
+        .iter()
+        .filter_map(|section| {
+            serde_json::from_str::<Vec<&RawValue>>(config.get(*section)?.get()).ok()
+        })
+        .flatten()
+        .filter_map(|rule| {
+            let fields = serde_json::from_str::<Object<'_>>(rule.get()).ok()?;
+            let raw = fields.get(field)?.get();
+            let url = serde_json::from_str::<Box<str>>(raw).ok()?;
+            // The borrowed RawValue still points into the original input.
+            let offset = raw.as_ptr().addr() - text.as_ptr().addr();
+            include(&url).then(|| RawLink {
+                url,
                 origin,
-                line,
-            }
+                line: line_at(text, offset),
+            })
         })
         .collect()
 }
@@ -159,6 +154,32 @@ mod tests {
         assert_eq!(
             urls(&vercel_config(text)),
             [("/v6/", 1), ("/index.html", 1)]
+        );
+    }
+
+    #[test]
+    fn reports_the_source_line_of_each_vercel_destination() {
+        let text = r#"{
+  "rewrites": [
+    {
+      "source": "/same",
+      "destination": "/same"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/same",
+      "destination":
+        "\/sam\u0065"
+    },
+    { "destination": "https://example.org/external" },
+    { "destination": "/dynamic/:id" },
+    { "destination": "/same" }
+  ]
+}"#;
+        assert_eq!(
+            urls(&vercel_config(text)),
+            [("/same", 12), ("/same", 16), ("/same", 5)]
         );
     }
 }

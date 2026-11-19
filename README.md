@@ -36,8 +36,9 @@ v6/guide/component-playground/index.html
 
 - **Links and assets**: `a`, `area`, and `link` `href`; `script`, `img`,
   `source`, `video`, `audio`, `track`, `iframe`, and `embed` `src`; `srcset`
-  candidates; `video` `poster`; `object` `data`; SVG `use` and `image`;
-  `meta` refresh targets; `og:image`, `og:url`, and `twitter:image`.
+  candidates on `img` and `source`; `imagesrcset` candidates on image
+  preloads; `video` `poster`; `object` `data`; SVG `use` and `image`; `meta`
+  refresh targets; `og:image`, `og:url`, and `twitter:image`.
 - **Anchors**: a fragment must name an element `id`, or an `<a name>`, on the
   target page. `#top` and text fragments (`#:~:text=`) always resolve.
 - **Base path**: on a site served below `/<repo>/`, an absolute link that
