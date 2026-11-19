@@ -72,7 +72,7 @@ fn ferramenta_lists_its_homepage_and_keeps_the_kit_out_of_search() {
     write(
         root,
         "index.html",
-        r#"<!doctype html><html><head><link rel="canonical" href="https://ferramenta.dev/"></head><body><a href="/kit/">Kit</a></body></html>"#,
+        r#"<!doctype html><html><head><title>Ferramenta</title><link rel="canonical" href="https://ferramenta.dev/"></head><body><a href="/kit/">Kit</a></body></html>"#,
     );
     write(
         root,
@@ -128,12 +128,12 @@ fn ardo_under_a_subpath_walks_sitemap_indexes_and_resolves_canonicals() {
     write(
         root,
         "guide/index.html",
-        "<!doctype html>\n<html><head>\n<base href=\"/ardo/guide/\"><link href=\"./\" rel=\"CANONICAL\">\n</head></html>",
+        "<!doctype html>\n<html><head>\n<title>Guide</title><base href=\"/ardo/guide/\"><link href=\"./\" rel=\"CANONICAL\">\n</head></html>",
     );
     write(
         root,
         "guide/setup.html",
-        r#"<!doctype html><html><head><link rel="canonical" href="?a=1&amp;b=2"></head></html>"#,
+        r#"<!doctype html><html><head><title>Setup</title><link rel="canonical" href="?a=1&amp;b=2"></head></html>"#,
     );
 
     let clean = report(root, site_url, 0);
@@ -152,7 +152,7 @@ fn ardo_under_a_subpath_walks_sitemap_indexes_and_resolves_canonicals() {
     write(
         root,
         "guide/index.html",
-        r#"<!doctype html><head><link rel="canonical" href="/ardo/guide/setup"></head>"#,
+        r#"<!doctype html><head><title>Guide</title><link rel="canonical" href="/ardo/guide/setup"></head>"#,
     );
     let issues = report(root, site_url, 1);
     assert_eq!(
@@ -191,14 +191,14 @@ fn reports_missing_duplicate_and_unusable_canonicals_as_distinct_findings() {
         root,
         "index.html",
         r#"<!doctype html>
-<head><template><meta name="robots" content="noindex"></template></head>
+<head><title>Home</title><template><meta name="robots" content="noindex"></template></head>
 <body><link rel="canonical" href="/"></body>"#,
     );
     write(
         root,
         "guide.html",
         r#"<!doctype html>
-<head>
+<head><title>Guide</title>
 <link rel="canonical" href="https://example.org/gone/">
 <link rel="canonical" href="">
 </head>"#,
@@ -290,7 +290,9 @@ fn discovers_declared_sitemaps_and_reports_the_effective_googlebot_rule() {
         write(
             root,
             &format!("{route}.html"),
-            &format!(r#"<!doctype html><link rel="canonical" href="https://example.org/{route}">"#),
+            &format!(
+                r#"<!doctype html><title>Guide</title><link rel="canonical" href="https://example.org/{route}">"#
+            ),
         );
     }
 
@@ -352,7 +354,7 @@ fn subpath_audits_use_an_explicit_host_robots_file() {
     write(
         &root,
         "guide/index.html",
-        r#"<!doctype html><link rel="canonical" href="https://example.org/ardo/guide">"#,
+        r#"<!doctype html><title>Guide</title><link rel="canonical" href="https://example.org/ardo/guide">"#,
     );
     assert!(findings(&report(&root, site_url, 0)).is_empty());
 
@@ -411,25 +413,25 @@ fn reachability_follows_html_navigation_and_finds_disconnected_sitemap_pages() {
     write(
         root,
         "manual/install.html",
-        r#"<!doctype html><link rel="canonical" href="https://example.org/docs/manual/install">
+        r#"<!doctype html><title>Guide</title><link rel="canonical" href="https://example.org/docs/manual/install">
 <a href="/docs/">Back to the home page</a>"#,
     );
     write(
         root,
         "island/a.html",
-        r#"<!doctype html><link rel="canonical" href="https://example.org/docs/island/a">
+        r#"<!doctype html><title>Guide</title><link rel="canonical" href="https://example.org/docs/island/a">
 <a href="b">B</a>"#,
     );
     write(
         root,
         "island/b.html",
-        r#"<!doctype html><link rel="canonical" href="https://example.org/docs/island/b">
+        r#"<!doctype html><title>Guide</title><link rel="canonical" href="https://example.org/docs/island/b">
 <a href="a">A</a>"#,
     );
     write(
         root,
         "standalone.html",
-        r#"<!doctype html><link rel="canonical" href="https://example.org/docs/standalone">"#,
+        r#"<!doctype html><title>Guide</title><link rel="canonical" href="https://example.org/docs/standalone">"#,
     );
     write(root, "spec.pdf", "A non-HTML document.");
     assert!(findings(&report(root, site_url, 0)).is_empty());
@@ -477,7 +479,7 @@ fn reachability_validates_starting_pages_and_supports_builds_without_a_home_page
     write(
         root,
         "guide/index.html",
-        r#"<!doctype html><link rel="canonical" href="https://example.org/docs/guide">"#,
+        r#"<!doctype html><title>Guide</title><link rel="canonical" href="https://example.org/docs/guide">"#,
     );
 
     let output = audit_command(root, site_url)
@@ -502,4 +504,112 @@ fn reachability_validates_starting_pages_and_supports_builds_without_a_home_page
         .output()
         .unwrap();
     assert!(findings(&parse_report(output, 0)).is_empty());
+}
+
+#[test]
+fn validates_lastmod_in_sitemaps_and_indexes() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    write(
+        root,
+        "sitemap-index.xml",
+        r#"<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap>
+    <loc>https://example.org/guide.xml</loc>
+    <lastmod>2025-02-29</lastmod>
+  </sitemap>
+</sitemapindex>"#,
+    );
+    write(
+        root,
+        "guide.xml",
+        r#"<urlset>
+  <url><loc>https://example.org/</loc><lastmod>2024-02-29</lastmod></url>
+  <url><loc>https://example.org/time.html</loc><lastmod>2024-02-29T12:00:00.123+01:00</lastmod></url>
+  <url><loc>https://example.org/unzoned.html</loc>
+    <lastmod>2024-02-29T12:00:00</lastmod>
+  </url>
+</urlset>"#,
+    );
+    for (file, url) in [
+        ("index.html", "https://example.org/"),
+        ("time.html", "https://example.org/time.html"),
+        ("unzoned.html", "https://example.org/unzoned.html"),
+    ] {
+        write(
+            root,
+            file,
+            &format!(r#"<!doctype html><title>Guide</title><link rel="canonical" href="{url}">"#),
+        );
+    }
+    let issues = report(root, "https://example.org/", 1);
+    assert_eq!(
+        findings(&issues),
+        [
+            ("sitemap_lastmod_invalid", "guide.xml", 5),
+            ("sitemap_lastmod_invalid", "sitemap-index.xml", 4),
+        ]
+    );
+    assert_eq!(
+        issues["issues"][0]["url"],
+        "https://example.org/unzoned.html"
+    );
+    assert_eq!(issues["issues"][1]["url"], "https://example.org/guide.xml");
+}
+
+#[test]
+fn audits_titles_and_optional_descriptions_on_sitemap_html_pages() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    write(
+        root,
+        "sitemap.xml",
+        r#"<urlset>
+  <url><loc>https://example.org/</loc></url>
+  <url><loc>https://example.org/missing.html</loc></url>
+  <url><loc>https://example.org/no-description.html</loc></url>
+</urlset>"#,
+    );
+    write(
+        root,
+        "index.html",
+        r#"<!doctype html>
+<head><link rel="canonical" href="/">
+<title> &nbsp; </title>
+<title>Guide &amp; tools</title>
+<meta name="description" content=" &#10; &nbsp;">
+<meta name="DESCRIPTION" content="A useful guide">
+</head>"#,
+    );
+    write(
+        root,
+        "missing.html",
+        r#"<!doctype html>
+<head><link rel="canonical" href="/missing.html"><template><title>Inert</title></template>
+<meta name="description">
+</head><body><svg><title>An icon</title></svg></body>"#,
+    );
+    write(
+        root,
+        "no-description.html",
+        r#"<!doctype html><title>Guide</title><link rel="canonical" href="/no-description.html">"#,
+    );
+    write(
+        root,
+        "unlisted.html",
+        "<!doctype html><meta name=description>",
+    );
+
+    let issues = report(root, "https://example.org/", 1);
+    assert_eq!(
+        findings(&issues),
+        [
+            ("title_empty", "index.html", 3),
+            ("title_multiple", "index.html", 4),
+            ("meta_description_empty", "index.html", 5),
+            ("meta_description_multiple", "index.html", 6),
+            ("title_missing", "missing.html", 0),
+            ("meta_description_empty", "missing.html", 3),
+        ]
+    );
 }

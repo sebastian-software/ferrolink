@@ -120,10 +120,15 @@ cargo run --release --locked -- audit build/client --site-url https://example.or
 
 The audit reads `sitemap.xml`, `sitemap-index.xml`, or `sitemap_index.xml`
 and follows local XML sitemap indexes. It reports malformed XML, invalid or
-duplicate URLs, and targets absent from the build. For each HTML page in a
-sitemap, it checks for a matching canonical link in the document head and
-detects `noindex` or `none` in `robots` and `googlebot` meta tags. A page
-marked `noindex` can stay in the build outside the sitemap.
+duplicate URLs, and targets absent from the build. When an entry contains
+`lastmod`, it checks for a valid calendar date or a timestamp with a time zone.
+For each HTML page in a sitemap, it checks for a matching canonical link
+in the document head and detects `noindex` or `none` in `robots` and
+`googlebot` meta tags. A page
+marked `noindex` can stay in the build outside the sitemap. For sitemap HTML
+pages without `noindex`, the audit requires one nonempty title in the head.
+A meta description is optional. When present, it must contain text and appear
+once in the head.
 
 The audit also checks malformed or multiple canonical links and canonicals
 that point to missing or non-indexable pages within this deployment. Relative
@@ -190,7 +195,7 @@ and [CI guide](https://github.com/silesiansolutions/search-quality-kit/blob/47dc
 | Validate XML sitemaps and indexes | ✓ | ✓ |
 | Discover sitemaps via robots.txt | ✓ | ✓ |
 | Detect missing static files listed in sitemaps | ✓ | — |
-| Validate sitemap lastmod | — | ✓ |
+| Validate sitemap lastmod | ✓ | ✓ |
 | Detect missing or multiple canonicals | ✓ | ✓ |
 | Detect sitemap and canonical mismatches | ✓ | ✓ |
 | Detect HTML noindex in sitemap entries | ✓ | ✓ |
@@ -199,7 +204,7 @@ and [CI guide](https://github.com/silesiansolutions/search-quality-kit/blob/47dc
 | Validate robots.txt syntax | — | ✓ |
 | Page checks | | |
 | Validate hreflang codes and return links | — | ✓ |
-| Check titles and descriptions | — | ✓ |
+| Check titles and meta descriptions | ✓ | ✓ |
 | Validate Open Graph metadata | — | ✓ |
 | Validate JSON-LD | — | ✓ |
 | Find exact content duplicates | — | ✓ |

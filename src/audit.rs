@@ -1,6 +1,7 @@
 //! Offline search and crawl checks over a static build.
 
 mod html;
+mod lastmod;
 mod reachability;
 mod robots;
 mod sitemap;
@@ -41,6 +42,12 @@ pub enum Code {
     RobotsSitemapTargetMissing,
     SitemapBlockedByRobots,
     SitemapUnreachable,
+    SitemapLastmodInvalid,
+    TitleMissing,
+    TitleEmpty,
+    TitleMultiple,
+    MetaDescriptionEmpty,
+    MetaDescriptionMultiple,
 }
 
 /// A finding in a build file or the explicitly supplied robots.txt.
@@ -177,6 +184,7 @@ pub fn run_with_options(
         .transpose()?;
     let sitemaps = sitemap::check(root, &mut audit, robots.as_ref(), reachable.as_ref())?;
     audit.check_canonicals();
+    audit.check_page_metadata();
     audit.issues.sort_unstable_by(|a, b| {
         (&a.source, a.line, a.code, &a.url, &a.message)
             .cmp(&(&b.source, b.line, b.code, &b.url, &b.message))
@@ -233,6 +241,65 @@ impl Audit<'_> {
             return None;
         }
         self.resolver.site_relative_path(url.path())
+    }
+
+    fn check_page_metadata(&mut self) {
+        for (&source, page) in &self.pages {
+            let Some(url) = page.sitemap_url.as_ref().filter(|_| !page.metadata.noindex) else {
+                continue;
+            };
+            let url = Some(url.as_str());
+            if page.metadata.titles.is_empty() {
+                self.issues.push(issue(
+                    Code::TitleMissing,
+                    source,
+                    0,
+                    url,
+                    "Add a title to the head of this sitemap page.",
+                ));
+            }
+            if let [_, extra, ..] = &page.metadata.titles[..] {
+                self.issues.push(issue(
+                    Code::TitleMultiple,
+                    source,
+                    extra.line,
+                    url,
+                    "Declare a single title in the page head.",
+                ));
+            }
+            if let [_, extra, ..] = &page.metadata.descriptions[..] {
+                self.issues.push(issue(
+                    Code::MetaDescriptionMultiple,
+                    source,
+                    extra.line,
+                    url,
+                    "Declare at most one meta description in the page head.",
+                ));
+            }
+            for element in page.metadata.titles.iter().filter(|title| title.empty) {
+                self.issues.push(issue(
+                    Code::TitleEmpty,
+                    source,
+                    element.line,
+                    url,
+                    "Add text to this title.",
+                ));
+            }
+            for element in page
+                .metadata
+                .descriptions
+                .iter()
+                .filter(|description| description.empty)
+            {
+                self.issues.push(issue(
+                    Code::MetaDescriptionEmpty,
+                    source,
+                    element.line,
+                    url,
+                    "Add text to this meta description or remove the tag.",
+                ));
+            }
+        }
     }
 
     fn check_canonicals(&mut self) {

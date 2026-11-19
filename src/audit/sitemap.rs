@@ -7,7 +7,7 @@ use roxmltree::{Document, Node};
 use rustc_hash::FxHashSet;
 use url::Url;
 
-use super::{Audit, Code, Lines, is_web_url, issue, robots::Robots};
+use super::{Audit, Code, Lines, is_web_url, issue, lastmod, robots::Robots};
 use crate::Error;
 
 const NS: &str = "http://www.sitemaps.org/schemas/sitemap/0.9";
@@ -121,6 +121,7 @@ pub(super) fn check(
             let Some(entry) = entry(audit, &file, child, &lines) else {
                 continue;
             };
+            check_lastmod(audit, &entry, child, &lines);
             if index {
                 if let Some(child) = index_child(audit, entry) {
                     children.push(child);
@@ -222,11 +223,7 @@ fn entry(audit: &mut Audit<'_>, source: &str, node: Node<'_, '_>, lines: &Lines)
         return None;
     };
     let line = lines.at(loc.range().start);
-    let value: String = loc
-        .children()
-        .filter(|node| node.is_text())
-        .filter_map(|node| node.text())
-        .collect();
+    let value = text_content(loc);
     let value = value.trim_ascii();
     let Some(url) = Url::parse(value).ok().filter(is_web_url) else {
         audit.issues.push(issue(
@@ -243,6 +240,29 @@ fn entry(audit: &mut Audit<'_>, source: &str, node: Node<'_, '_>, lines: &Lines)
         line,
         url,
     })
+}
+
+fn check_lastmod(audit: &mut Audit<'_>, entry: &Entry, node: Node<'_, '_>, lines: &Lines) {
+    for value in node.children().filter(|child| has_tag(*child, "lastmod")) {
+        if value.children().any(|child| child.is_element())
+            || !lastmod::valid(text_content(value).trim_ascii())
+        {
+            audit.issues.push(issue(
+                Code::SitemapLastmodInvalid,
+                &entry.source,
+                lines.at(value.range().start),
+                Some(entry.url.as_str()),
+                "Use a valid calendar date (YYYY-MM-DD) or a timestamp with a time zone in lastmod.",
+            ));
+        }
+    }
+}
+
+fn text_content(node: Node<'_, '_>) -> String {
+    node.children()
+        .filter(|child| child.is_text())
+        .filter_map(|child| child.text())
+        .collect()
 }
 
 fn index_child(audit: &mut Audit<'_>, entry: Entry) -> Option<Visit> {
