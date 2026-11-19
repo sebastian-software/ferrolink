@@ -18,7 +18,7 @@ pub struct RawLink {
     pub url: Box<str>,
     /// Where it came from, such as `a[href]` or `img[srcset]`.
     pub origin: &'static str,
-    /// One-based line of the element's start tag.
+    /// One-based source line, at the start tag for HTML references.
     pub line: u32,
 }
 
@@ -98,6 +98,7 @@ enum Slot {
     Srcset(&'static str),
     Base,
     Rel,
+    LinkAs,
     HttpEquiv,
     MetaName,
     Content,
@@ -121,6 +122,8 @@ fn slot(element: Element, attribute: &[u8]) -> Option<Slot> {
         (E::Img, b"srcset") => Slot::Srcset("img[srcset]"),
         (E::Link, b"href") => Slot::Url("link[href]"),
         (E::Link, b"rel") => Slot::Rel,
+        (E::Link, b"as") => Slot::LinkAs,
+        (E::Link, b"imagesrcset") => Slot::Srcset("link[imagesrcset]"),
         (E::Meta, b"http-equiv") => Slot::HttpEquiv,
         (E::Meta, b"name" | b"property") => Slot::MetaName,
         (E::Meta, b"content") => Slot::Content,
@@ -150,6 +153,7 @@ struct Collector {
     position: usize,
     pending: Vec<(&'static str, String)>,
     rel: String,
+    link_as_image: bool,
     http_equiv: String,
     meta_name: String,
     content: Option<String>,
@@ -180,6 +184,7 @@ impl Collector {
             }
             Slot::Base => self.pending.push(("base[href]", value.into_owned())),
             Slot::Rel => self.rel = value.into_owned(),
+            Slot::LinkAs => self.link_as_image = value.eq_ignore_ascii_case("image"),
             Slot::HttpEquiv => self.http_equiv = value.into_owned(),
             Slot::MetaName => self.meta_name = value.into_owned(),
             Slot::Content => self.content = Some(value.into_owned()),
@@ -188,6 +193,7 @@ impl Collector {
 
     fn close_tag(&mut self) {
         let element = self.element.take();
+        let mut image_preload = false;
         match element {
             Some(Element::Link) => {
                 let hint_only = self.rel.split_ascii_whitespace().any(|token| {
@@ -197,6 +203,11 @@ impl Collector {
                 if hint_only {
                     self.pending.clear();
                 }
+                image_preload = self.link_as_image
+                    && self
+                        .rel
+                        .split_ascii_whitespace()
+                        .any(|token| token.eq_ignore_ascii_case("preload"));
             }
             Some(Element::Meta) => self.close_meta(),
             _ => {}
@@ -208,7 +219,8 @@ impl Collector {
                         self.scan.base_href = Some(value.into());
                     }
                 }
-                "img[srcset]" | "source[srcset]" => {
+                "link[imagesrcset]" if !image_preload => {}
+                "img[srcset]" | "source[srcset]" | "link[imagesrcset]" => {
                     for candidate in srcset_urls(&value) {
                         self.push_link(candidate, origin);
                     }
@@ -217,6 +229,7 @@ impl Collector {
             }
         }
         self.rel.clear();
+        self.link_as_image = false;
         self.http_equiv.clear();
         self.meta_name.clear();
         self.content = None;

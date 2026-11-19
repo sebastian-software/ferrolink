@@ -78,8 +78,8 @@ impl Site {
     ///
     /// Follows what GitHub Pages, Netlify, Cloudflare Pages, and most static
     /// servers have in common: a trailing slash serves the directory's
-    /// `index.html`; otherwise the exact file wins, then `<path>.html`, then
-    /// `<path>/index.html` (reached through a redirect to the slash form).
+    /// `index.html` (or `index.htm`); otherwise the exact file wins, then
+    /// `<path>.html`, then the directory index reached through the slash form.
     /// Lookups are case-sensitive, as on those hosts, whatever the local file
     /// system does.
     pub(crate) fn serve(&self, path: &str) -> Option<&str> {
@@ -91,6 +91,7 @@ impl Site {
         found(path)
             .or_else(|| found(&format!("{path}.html")))
             .or_else(|| found(&format!("{path}/index.html")))
+            .or_else(|| found(&format!("{path}/index.htm")))
     }
 }
 
@@ -134,6 +135,26 @@ mod tests {
         assert_eq!(site.serve("about"), Some("about.html"));
         assert_eq!(site.serve("about.html"), Some("about.html"));
         assert_eq!(site.serve("app.css"), Some("app.css"));
+    }
+
+    #[test]
+    fn serves_htm_directory_indexes_after_existing_candidates() {
+        let site = site(&[
+            "guide/index.htm",
+            "both/index.htm",
+            "both/index.html",
+            "about/index.htm",
+            "about.html",
+            "exact/index.htm",
+            "exact.html",
+            "exact",
+        ]);
+        assert_eq!(site.serve("guide"), Some("guide/index.htm"));
+        assert_eq!(site.serve("guide/"), Some("guide/index.htm"));
+        assert_eq!(site.serve("both"), Some("both/index.html"));
+        assert_eq!(site.serve("both/"), Some("both/index.html"));
+        assert_eq!(site.serve("about"), Some("about.html"));
+        assert_eq!(site.serve("exact"), Some("exact"));
     }
 
     #[test]

@@ -262,3 +262,32 @@ fn external_base_links_do_not_become_missing_local_files() {
     assert_eq!(report["issues"].as_array().unwrap().len(), 1);
     assert_eq!(report["issues"][0]["target"], "/missing");
 }
+
+#[test]
+fn checks_responsive_image_preload_candidates() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "index.html",
+        r#"<!doctype html>
+<link
+  imagesrcset="/hero.png 1x, /hero@2x.png 2x, https://example.org/hero.png 3x"
+  as="IMAGE" rel="PRELOAD">
+<link rel="preload" as="image" href="/hero.png">
+<link rel="preload" as="style" imagesrcset="/not-an-image-preload.png 2x">
+<link rel="stylesheet" as="image" imagesrcset="/not-a-preload.png 2x">
+<link rel="dns-prefetch preload" as="image" href="/hint" imagesrcset="/hint.png 2x">"#,
+    );
+    write(dir.path(), "hero.png", "");
+    let output = ferrolink(&["check", dir.path().to_str().unwrap(), "--format", "json"]);
+    assert_eq!(output.status.code(), Some(1));
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["summary"]["external_links"], 1);
+    let issues = report["issues"].as_array().unwrap();
+    assert_eq!(issues.len(), 1);
+    assert_eq!(issues[0]["source"], "index.html");
+    assert_eq!(issues[0]["line"], 2);
+    assert_eq!(issues[0]["kind"], "broken_link");
+    assert_eq!(issues[0]["origin"], "link[imagesrcset]");
+    assert_eq!(issues[0]["target"], "/hero@2x.png");
+}
