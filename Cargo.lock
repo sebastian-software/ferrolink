@@ -216,7 +216,7 @@ dependencies = [
 
 [[package]]
 name = "ferrolink"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "clap",
  "ferralk",
@@ -235,7 +235,7 @@ dependencies = [
 
 [[package]]
 name = "ferrolink-node"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "ferrolink",
  "napi",
