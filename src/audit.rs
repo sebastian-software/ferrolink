@@ -1,5 +1,6 @@
 //! Offline search and crawl checks over a static build.
 
+mod hreflang;
 mod html;
 mod lastmod;
 mod reachability;
@@ -49,6 +50,11 @@ pub enum Code {
     MetaDescriptionEmpty,
     MetaDescriptionMultiple,
     JsonLdSyntaxInvalid,
+    HreflangLanguageInvalid,
+    HreflangUrlInvalid,
+    HreflangTargetMissing,
+    HreflangSelfMissing,
+    HreflangReturnMissing,
 }
 
 /// A finding in a build file or the explicitly supplied robots.txt.
@@ -186,6 +192,7 @@ pub fn run_with_options(
     let sitemaps = sitemap::check(root, &mut audit, robots.as_ref(), reachable.as_ref())?;
     audit.check_canonicals();
     audit.check_page_metadata();
+    hreflang::check(&mut audit);
     audit.issues.sort_unstable_by(|a, b| {
         (&a.source, a.line, a.code, &a.url, &a.message)
             .cmp(&(&b.source, b.line, b.code, &b.url, &b.message))

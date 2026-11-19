@@ -136,6 +136,14 @@ blocks throughout the built HTML. The `json_ld_syntax_invalid` finding
 locates the parse error in the HTML file. Schema.org and rich-result checks
 are tracked separately in the comparison below.
 
+For HTML pages that declare `hreflang` alternates in the head, the audit
+checks registered two-letter language codes, optional script and region
+codes, and the optional `x-default` fallback. It requires absolute HTTP(S)
+URLs and a self-reference. Local alternate targets must exist, and local
+HTML targets must link back. URLs that resolve to the same built file count
+as the same page. For alternates outside the deployment, only the declaration
+is checked.
+
 The audit also checks malformed or multiple canonical links and canonicals
 that point to missing or non-indexable pages within this deployment. Relative
 canonical links resolve against the page URL and its first `base href`, if
@@ -209,7 +217,7 @@ and [CI guide](https://github.com/silesiansolutions/search-quality-kit/blob/47dc
 | Detect robots.txt blocks on sitemap URLs | ✓ | ✓ |
 | Validate robots.txt syntax | — | ✓ |
 | Page checks | | |
-| Validate hreflang codes and return links | — | ✓ |
+| Validate HTML hreflang codes and return links | ✓ | ✓ |
 | Check titles and meta descriptions | ✓ | ✓ |
 | Validate Open Graph metadata | — | ✓ |
 | Validate embedded JSON-LD syntax | ✓ | ✓ |

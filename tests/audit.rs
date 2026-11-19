@@ -666,3 +666,82 @@ fn checks_only_embedded_json_ld_syntax_in_head_and_body() {
         "https://example.org/unlisted.html"
     );
 }
+
+#[test]
+fn audits_html_hreflang_in_a_bilingual_ardo_build() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    let site_url = "https://example.org/ardo/";
+    write(
+        root,
+        "sitemap.xml",
+        r#"<urlset>
+  <url><loc>https://example.org/ardo/de/guide/</loc></url>
+  <url><loc>https://example.org/ardo/en/guide/</loc></url>
+</urlset>"#,
+    );
+    write(root, "guide.pdf", "");
+    let german = r#"<!doctype html>
+<html lang="de"><head>
+<title>Handbuch</title><link rel="canonical" href="https://example.org/ardo/de/guide/">
+<link rel="alternate" hreflang="de" href="https://example.org/ardo/de/guide/">
+<link rel="ALTERNATE" hreflang="EN-gb" href="https://example.org/ardo/en/guide/">
+<link rel="alternate" hreflang="x-default" href="https://example.org/ardo/en/guide/">
+<link rel="alternate" hreflang="fr" href="https://fr.example.org/guide/">
+<link rel="alternate" href="/feed.xml">
+<template><link rel="alternate" hreflang="bad"></template>
+</head><body><link rel="alternate" hreflang="bad"></body></html>"#;
+    let english = r#"<!doctype html>
+<html lang="en-GB"><head>
+<title>Guide</title><link rel="canonical" href="https://example.org/ardo/en/guide/">
+<link rel="alternate" hreflang="en-GB" href="https://example.org/ardo/en/guide/">
+<link rel="alternate" hreflang="de" href="https://example.org/ardo/de/guide/">
+</head></html>"#;
+    write(root, "de/guide/index.html", german);
+    write(root, "en/guide/index.html", english);
+
+    let clean = report(root, site_url, 0);
+    assert_eq!(clean["summary"]["base_path"], "/ardo/");
+    assert!(findings(&clean).is_empty());
+
+    write(
+        root,
+        "de/guide/index.html",
+        r#"<!doctype html>
+<head><title>Handbuch</title><link rel="canonical" href="https://example.org/ardo/de/guide/">
+<link rel="alternate" hreflang="de" href="https://example.org/ardo/de/guide/">
+<link rel="alternate" hreflang="en-GB" href="https://example.org/ardo/en/guide/">
+<link rel="alternate" hreflang="en_UK" href="https://example.org/ardo/en/guide/">
+<link rel="alternate" hreflang="fr" href="/ardo/fr/guide/">
+<link rel="alternate" hreflang="it" href="https://example.org/ardo/it/guide/">
+<link rel="alternate" hreflang="es" href="https://example.org/ardo/guide.pdf">
+<link rel="alternate" hreflang="ja" href="https://example.org/other/ja/guide/">
+</head>"#,
+    );
+    write(
+        root,
+        "en/guide/index.html",
+        r#"<!doctype html>
+<head><title>Guide</title><link rel="canonical" href="https://example.org/ardo/en/guide/">
+<link rel="alternate" hreflang="fr" href="https://fr.example.org/guide/">
+</head><body>
+<link rel="alternate" hreflang="de" href="https://example.org/ardo/de/guide/">
+</body>"#,
+    );
+
+    let issues = report(root, site_url, 1);
+    assert_eq!(
+        findings(&issues),
+        [
+            ("hreflang_return_missing", "de/guide/index.html", 4),
+            ("hreflang_language_invalid", "de/guide/index.html", 5),
+            ("hreflang_url_invalid", "de/guide/index.html", 6),
+            ("hreflang_target_missing", "de/guide/index.html", 7),
+            ("hreflang_self_missing", "en/guide/index.html", 0),
+        ]
+    );
+    assert_eq!(
+        issues["issues"][0]["url"],
+        "https://example.org/ardo/en/guide/"
+    );
+}
