@@ -261,12 +261,10 @@ fn normalize_authority(authority: &str) -> String {
     host.to_ascii_lowercase()
 }
 
-/// Resolves `.` and `..` segments of an absolute path; `..` never climbs
-/// above the root.
+/// Resolves literal and percent-encoded dot segments of an absolute path;
+/// `..` never climbs above the root.
 fn remove_dot_segments(path: &str) -> Cow<'_, str> {
-    let has_dots = path
-        .split('/')
-        .any(|segment| segment == "." || segment == "..");
+    let has_dots = path.split('/').any(|segment| dot_segment(segment) != 0);
     if !has_dots {
         return Cow::Borrowed(path);
     }
@@ -274,12 +272,12 @@ fn remove_dot_segments(path: &str) -> Cow<'_, str> {
     let last = segments.len() - 1;
     let mut output: Vec<&str> = Vec::with_capacity(segments.len());
     for (index, segment) in segments.into_iter().enumerate() {
-        match segment {
-            "." => {}
-            ".." => {
+        match dot_segment(segment) {
+            1 => {}
+            2 => {
                 output.pop();
             }
-            segment => {
+            _ => {
                 output.push(segment);
                 continue;
             }
@@ -290,6 +288,22 @@ fn remove_dot_segments(path: &str) -> Cow<'_, str> {
         }
     }
     Cow::Owned(format!("/{}", output.join("/")))
+}
+
+// URL dot segments accept %2e in either case, but only when the entire
+// segment consists of one or two dots.
+fn dot_segment(segment: &str) -> u8 {
+    if segment == "." || segment.eq_ignore_ascii_case("%2e") {
+        1
+    } else if segment == ".."
+        || segment.eq_ignore_ascii_case(".%2e")
+        || segment.eq_ignore_ascii_case("%2e.")
+        || segment.eq_ignore_ascii_case("%2e%2e")
+    {
+        2
+    } else {
+        0
+    }
 }
 
 #[cfg(test)]
@@ -434,6 +448,45 @@ mod tests {
         assert_eq!(remove_dot_segments("/a/.."), "/");
         assert_eq!(remove_dot_segments("/../../a"), "/a");
         assert_eq!(remove_dot_segments("/a/b"), "/a/b");
+    }
+
+    #[test]
+    fn resolves_encoded_dot_segments_before_classifying_the_base() {
+        let resolver = Resolver::new("/docs/", Some("https://example.org/docs/"));
+        let doc = page("/docs/guide/");
+        for reference in ["../api", "%2e%2e/api", ".%2E/api", "%2E./api"] {
+            assert_eq!(
+                resolver.resolve(reference, &doc),
+                internal("api", None, "/docs/api")
+            );
+        }
+        for reference in [
+            "/docs/%2e%2E/other",
+            "HTTPS://EXAMPLE.ORG/docs/%2E%2e/other",
+        ] {
+            assert_eq!(
+                resolver.resolve(reference, &doc),
+                Resolved::OutsideBase {
+                    url: "/other".to_owned()
+                }
+            );
+        }
+        assert_eq!(
+            resolver.resolve("/docs/%2E../other", &doc),
+            internal(".../other", None, "/docs/%2E../other")
+        );
+        assert_eq!(
+            resolver.resolve("https://example.org/docs/guide/%2e%2E", &doc),
+            internal("", None, "/docs/")
+        );
+        assert_eq!(
+            resolver.resolve("/docs/%2e/file%2Ehtml", &doc),
+            internal("file.html", None, "/docs/file%2Ehtml")
+        );
+        assert_eq!(
+            resolver.resolve("/docs/a%2eb", &doc),
+            internal("a.b", None, "/docs/a%2eb")
+        );
     }
 
     #[test]
