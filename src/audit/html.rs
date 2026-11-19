@@ -11,6 +11,7 @@ pub(super) struct Metadata {
     pub base: Option<String>,
     pub canonicals: Vec<Canonical>,
     pub noindex: bool,
+    pub links: Vec<String>,
 }
 
 pub(super) struct Canonical {
@@ -18,7 +19,7 @@ pub(super) struct Canonical {
     pub line: u32,
 }
 
-pub(super) fn scan(html: &[u8]) -> Metadata {
+pub(super) fn scan(html: &[u8], collect_links: bool) -> Metadata {
     let mut emitter = DefaultEmitter::<usize>::new_with_span();
     emitter.naively_switch_states(true);
     let mut metadata = Metadata::default();
@@ -46,6 +47,12 @@ pub(super) fn scan(html: &[u8]) -> Metadata {
                             href: attr(&tag, b"href").unwrap_or_default().into_owned(),
                             line: lines.at(tag.span.start),
                         });
+                    }
+                }
+                b"a" | b"area" if collect_links => {
+                    in_head = false;
+                    if let Some(href) = attr(&tag, b"href") {
+                        metadata.links.push(href.into_owned());
                     }
                 }
                 b"meta" => {

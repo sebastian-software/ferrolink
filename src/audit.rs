@@ -1,6 +1,8 @@
-//! Offline sitemap, canonical, and noindex checks over a static build.
+//! Offline search and crawl checks over a static build.
 
 mod html;
+mod reachability;
+mod robots;
 mod sitemap;
 
 use std::borrow::Cow;
@@ -35,9 +37,15 @@ pub enum Code {
     CanonicalInvalid,
     CanonicalTargetMissing,
     CanonicalTargetNoindex,
+    RobotsSitemapUrlInvalid,
+    RobotsSitemapTargetMissing,
+    SitemapBlockedByRobots,
+    SitemapUnreachable,
 }
 
-/// A finding in an HTML or sitemap file, relative to the build root.
+/// A finding in a build file or the explicitly supplied robots.txt.
+///
+/// Build files use paths relative to the build root.
 #[derive(Debug, Serialize)]
 pub struct Issue {
     pub code: Code,
@@ -64,12 +72,59 @@ pub struct Report {
     pub issues: Vec<Issue>,
 }
 
+/// Optional inputs for a static build audit.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Options<'a> {
+    /// Local copy of the origin's robots.txt.
+    pub robots_path: Option<&'a Path>,
+    /// Enables reachability checks. The slice adds public URLs or origin-relative
+    /// paths as entry points alongside the site root.
+    pub reachability: Option<&'a [String]>,
+}
+
 /// Audits a static build published at `site_url`, including its deployment path.
 ///
 /// # Errors
 ///
 /// Returns an error if the site URL is invalid or the build cannot be read.
 pub fn run(root: &Path, site_url: &str) -> Result<Report, Error> {
+    run_with_options(root, site_url, Options::default())
+}
+
+/// Audits the build with a local copy of the host's robots.txt.
+///
+/// By default, a build at the origin root uses its own robots.txt when present.
+/// Pass a host file to use its policy for a build served under a subpath.
+///
+/// # Errors
+///
+/// Returns an error if the site URL is invalid or an input cannot be read.
+pub fn run_with_robots(
+    root: &Path,
+    site_url: &str,
+    robots_path: Option<&Path>,
+) -> Result<Report, Error> {
+    run_with_options(
+        root,
+        site_url,
+        Options {
+            robots_path,
+            ..Options::default()
+        },
+    )
+}
+
+/// Audits the build with optional robots.txt and reachability inputs.
+///
+/// # Errors
+///
+/// Returns an error if the site URL or an entry point is invalid, no starting
+/// page is available for reachability, or an input cannot be read.
+pub fn run_with_options(
+    root: &Path,
+    site_url: &str,
+    options: Options<'_>,
+) -> Result<Report, Error> {
     let base = Url::parse(site_url)
         .ok()
         .filter(|url| is_web_url(url) && url.query().is_none())
@@ -78,12 +133,19 @@ pub fn run(root: &Path, site_url: &str) -> Result<Report, Error> {
     Site::validate_root(root)?;
     let threads = std::thread::available_parallelism().map_or(1, usize::from);
     let (site, files) = Site::walk(root, threads)?;
+    let robots = match options.robots_path {
+        Some(path) => Some(robots::Robots::read(path, path.display().to_string())?),
+        None if resolver.base_path() == "/" && site.contains("robots.txt") => Some(
+            robots::Robots::read(&root.join("robots.txt"), "robots.txt".to_owned())?,
+        ),
+        None => None,
+    };
     let metadata = files
         .par_iter()
         .map(|file| {
             let path = root.join(&file.path);
             let html = fs::read(&path).map_err(|error| Error::Read(path, error))?;
-            Ok(html::scan(&html))
+            Ok(html::scan(&html, options.reachability.is_some()))
         })
         .collect::<Result<Vec<_>, Error>>()?;
     let pages: FxHashMap<_, _> = files
@@ -109,7 +171,11 @@ pub fn run(root: &Path, site_url: &str) -> Result<Report, Error> {
         pages,
         issues: Vec::new(),
     };
-    let sitemaps = sitemap::check(root, &mut audit)?;
+    let reachable = options
+        .reachability
+        .map(|entries| reachability::walk(&audit, entries))
+        .transpose()?;
+    let sitemaps = sitemap::check(root, &mut audit, robots.as_ref(), reachable.as_ref())?;
     audit.check_canonicals();
     audit.issues.sort_unstable_by(|a, b| {
         (&a.source, a.line, a.code, &a.url, &a.message)
@@ -138,16 +204,18 @@ impl Page {
         if href.is_empty() {
             return None;
         }
-        let base = self
-            .metadata
-            .base
-            .as_deref()
-            .and_then(|base| document_url.join(base.trim_ascii()).ok());
-        base.as_ref()
-            .unwrap_or(document_url)
+        self.document_base(document_url)
             .join(href)
             .ok()
             .filter(is_web_url)
+    }
+
+    fn document_base<'u>(&self, document_url: &'u Url) -> Cow<'u, Url> {
+        self.metadata
+            .base
+            .as_deref()
+            .and_then(|base| document_url.join(base.trim_ascii()).ok())
+            .map_or(Cow::Borrowed(document_url), Cow::Owned)
     }
 }
 

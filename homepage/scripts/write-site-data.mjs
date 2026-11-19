@@ -41,6 +41,7 @@ const nodeVersions = node.split("||").map((range) => {
   if (!major || !minor) throw new Error(`Cannot read the Node.js range ${node}.`);
   return `${major}.${minor}+`;
 });
+const supportMarks = new Set(["✓", "—"]);
 const readme = await readFile(new URL("README.md.src", repository), "utf8");
 await writeData("site.json", {
   version,
@@ -70,7 +71,7 @@ async function writeData(name, value) {
   await writeFile(new URL(name, data), result.code);
 }
 
-/** The README owns the plain-text comparison cells shown on both surfaces. */
+/** The README supplies the groups and support marks shown on both surfaces. */
 function readAuditComparison(markdown) {
   const columns = ["Capability", "Ferrolink", "Search Quality Kit"];
   const lines = markdown.split("\n");
@@ -78,19 +79,43 @@ function readAuditComparison(markdown) {
   if (heading === -1) {
     throw new Error("README.md.src is missing the Search Quality Kit comparison.");
   }
-  const rows = [];
-  for (const line of lines.slice(heading + 2)) {
+  const groups = readComparisonGroups(lines.slice(heading + 2));
+  if (groups.length === 0 || groups.some(({ rows }) => rows.length === 0)) {
+    throw new Error("The Search Quality Kit comparison needs nonempty groups.");
+  }
+  return { columns, groups };
+}
+
+function readComparisonGroups(lines) {
+  const groups = [];
+  for (const line of lines) {
     if (!line.startsWith("|")) break;
-    const [capability, ferrolink, kit, extra] = comparisonCells(line);
-    if (!capability || !ferrolink || !kit || extra !== undefined) {
-      throw new Error("The Search Quality Kit comparison needs three plain-text cells per row.");
+    const row = readComparisonRow(line);
+    if ("rows" in row) {
+      groups.push(row);
+      continue;
     }
-    rows.push({ capability, ferrolink, kit });
+    const group = groups.at(-1);
+    if (group === undefined) {
+      throw new Error(`Expected a group before ${row.capability}`);
+    }
+    group.rows.push(row);
   }
-  if (rows.length === 0) {
-    throw new Error("The Search Quality Kit comparison is empty.");
+  return groups;
+}
+
+function readComparisonRow(line) {
+  const [capability, ferrolink, kit, extra] = comparisonCells(line);
+  if (!capability || ferrolink === undefined || kit === undefined || extra !== undefined) {
+    throw new Error(`Expected three cells in comparison row ${line}`);
   }
-  return { columns, rows };
+  if (ferrolink === "" && kit === "") {
+    return { name: capability, rows: [] };
+  }
+  if (!supportMarks.has(ferrolink) || !supportMarks.has(kit)) {
+    throw new Error(`Expected support marks for ${capability}`);
+  }
+  return { capability, ferrolink: ferrolink === "✓", kit: kit === "✓" };
 }
 
 function comparisonCells(line) {

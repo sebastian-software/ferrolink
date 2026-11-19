@@ -22,7 +22,7 @@ enum Command {
     /// Exits with 0 when every reference resolves, 1 when issues were found,
     /// and 2 when the check could not run.
     Check(CheckArgs),
-    /// Audit sitemap URLs, canonicals, and noindex in a static build.
+    /// Audit sitemaps, canonicals, noindex, and crawl rules in a static build.
     Audit(AuditArgs),
 }
 
@@ -83,6 +83,20 @@ struct AuditArgs {
     #[arg(long, value_name = "URL")]
     site_url: String,
 
+    /// Local copy of the host's /robots.txt. Overrides automatic discovery
+    /// and supplies the host policy when the build is served under a subpath.
+    #[arg(long, value_name = "PATH")]
+    robots: Option<PathBuf>,
+
+    /// Report sitemap pages unreachable via internal HTML links.
+    #[arg(long)]
+    check_reachability: bool,
+
+    /// Add a public URL or origin-relative path as a starting page. Repeatable.
+    /// Also enables the reachability check.
+    #[arg(long = "entry-point", value_name = "URL_OR_PATH")]
+    entry_points: Vec<String>,
+
     /// Output format.
     #[arg(long, value_enum, default_value_t = Format::Human)]
     format: Format,
@@ -133,7 +147,12 @@ fn check(args: CheckArgs) -> ExitCode {
 }
 
 fn audit(args: AuditArgs) -> ExitCode {
-    let report = match audit::run(&args.dir, &args.site_url) {
+    let options = audit::Options {
+        robots_path: args.robots.as_deref(),
+        reachability: (args.check_reachability || !args.entry_points.is_empty())
+            .then_some(args.entry_points.as_slice()),
+    };
+    let report = match audit::run_with_options(&args.dir, &args.site_url, options) {
         Ok(report) => report,
         Err(error) => {
             eprintln!("error: {error}");

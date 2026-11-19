@@ -12,8 +12,8 @@ ferrolink reads the output directory of a static site build and checks that
 every link, asset reference, and `#fragment` points at something the build
 contains. It parses every page in parallel, resolves references the way a
 browser does, and maps URLs onto files the way static hosts do. It needs no
-server and no network. The Rust CLI also audits sitemaps, canonicals, and
-`noindex` directives before deployment.
+server and no network. The Rust CLI also audits sitemaps, canonicals,
+`noindex` directives, and Googlebot crawl rules before deployment.
 
 It was built to gate releases and deployments of
 [Ardo](https://github.com/sebastian-software/ardo) documentation sites, and
@@ -130,35 +130,89 @@ that point to missing or non-indexable pages within this deployment. Relative
 canonical links resolve against the page URL and its first `base href`, if
 present.
 
+At the origin root, the audit reads the build's `robots.txt` when present.
+It discovers local sitemaps from `Sitemap:` declarations alongside the
+conventional filenames. It also reports sitemap URLs blocked for Googlebot
+and points to the matching `Disallow` line. Declarations for other origins
+or deployments are outside the audit's scope.
+
+For a build deployed under a subpath, supply a local copy of the origin's
+`/robots.txt` with `--robots`. The flag also lets you override the build file
+for a site at the origin root.
+
+```bash
+cargo run --release --locked -- audit build/client --site-url https://example.org/ardo/ \
+  --robots ./host-robots.txt --format json
+```
+
+To check internal reachability, pass `--check-reachability`. Ferrolink
+starts at the site's home page and follows local `<a href>` and `<area href>`
+links in the built HTML. A sitemap entry for an existing HTML page without
+`noindex` produces `sitemap_unreachable` if the walk misses it. The finding
+points to the entry in the sitemap.
+
+Use the repeatable `--entry-point` option for separately linked sections.
+Each entry is a public URL or an origin-relative path, including the
+deployment prefix. Supplying an entry enables the check and can provide the
+starting page for a build without a home page.
+
+```bash
+cargo run --release --locked -- audit build/client --site-url https://example.org/ardo/ \
+  --check-reachability --entry-point /ardo/guide/ --format json
+```
+
 JSON output contains `summary` and an `issues` array. Each issue has a stable
-`code`, a build-relative `source`, a one-based `line` (zero for a missing
-element or file), a nullable `url`, and a human-readable `message`. Use the code
-for CI automation. Exit status is `0` for a clean audit, `1` for findings, and
-`2` when the audit cannot run. The audit works offline against the generated
-files.
+`code`, a `source` path, a one-based `line` (zero for a missing element or
+file), a nullable `url`, and a human-readable `message`. The `source` is
+build-relative for build files and uses the supplied path for `--robots`. Use
+the code for CI automation. Exit status is `0` for a clean audit, `1` for
+findings, and `2` when the audit cannot run. The audit works offline against
+the generated files.
 
 ### Compare with Search Quality Kit
 
-Ferrolink coverage describes this source tree. A dash marks a feature gap.
-Compare against [Search Quality Kit’s check catalog](https://github.com/silesiansolutions/search-quality-kit/blob/47dc9a8870b4b43cf95fa63a7501a76bd2abadff/docs/checks.md)
+Ferrolink coverage describes this source tree. Search Quality Kit requires
+Node.js 24 or newer. ✓ means supported and — marks a gap. See Search Quality Kit’s
+[check catalog](https://github.com/silesiansolutions/search-quality-kit/blob/47dc9a8870b4b43cf95fa63a7501a76bd2abadff/docs/checks.md)
 and [CI guide](https://github.com/silesiansolutions/search-quality-kit/blob/47dc9a8870b4b43cf95fa63a7501a76bd2abadff/docs/ci.md).
 
 | Capability | Ferrolink | Search Quality Kit |
-| --- | --- | --- |
-| Audit runtime | Native Rust CLI | Node.js 24 or newer |
-| Audit input | Static build directory | Static build directory or live HTTP crawl |
-| Links and assets | Local targets, cross-page fragments, and deployment paths | Local routes and assets, plus HTTP checks in crawl mode |
-| Sitemaps | XML and indexes, duplicate URLs, missing local targets | XML and indexes, robots.txt discovery, lastmod validation |
-| Canonicals | Declaration and local target checks, required and matching on sitemap pages | Declaration and origin checks, sitemap consistency, and HTTP status and redirect checks |
-| Noindex | Conflicts on sitemap and local canonical targets using HTML meta tags | HTML meta tags and HTTP headers on audited pages, plus sitemap conflicts |
-| Robots.txt policy | — | Syntax, crawler access, and sitemap declarations |
-| Hreflang | Local alternate URL targets | Language codes, reciprocal and self references, and target consistency |
-| Link graph and duplicates | — | Orphan pages, link text, and exact duplicate content |
-| Metadata and structured data | Local Open Graph URL and Twitter image targets | Titles, descriptions, Open Graph, and JSON-LD |
-| Delivered HTML and accessibility | — | Basic HTML, accessibility, and performance checks |
-| Agent discovery | — | llms.txt and declarative WebMCP checks |
-| Redirects | Destinations in static deployment files and HTML refresh tags | Redirect chains, loops, and broken destinations over HTTP |
-| CI reports and gates | Text and JSON, stable audit rule IDs, and exit status | Text, JSON, Markdown, and SARIF, plus baselines, suppressions, and a GitHub Action |
+| --- | :---: | :---: |
+| Build and navigation | | |
+| Audit static builds offline | ✓ | ✓ |
+| Native Rust audit binary | ✓ | — |
+| Check local link and asset targets | ✓ | ✓ |
+| Check cross-page fragments | ✓ | — |
+| Check redirect and deployment files | ✓ | — |
+| Check static reachability from entry points | ✓ | — |
+| Find pages with zero incoming links | — | ✓ |
+| Sitemaps and indexing | | |
+| Validate XML sitemaps and indexes | ✓ | ✓ |
+| Discover sitemaps via robots.txt | ✓ | ✓ |
+| Detect missing static files listed in sitemaps | ✓ | — |
+| Validate sitemap lastmod | — | ✓ |
+| Detect missing or multiple canonicals | ✓ | ✓ |
+| Detect sitemap and canonical mismatches | ✓ | ✓ |
+| Detect HTML noindex in sitemap entries | ✓ | ✓ |
+| Detect noindex in HTTP headers | — | ✓ |
+| Detect robots.txt blocks on sitemap URLs | ✓ | ✓ |
+| Validate robots.txt syntax | — | ✓ |
+| Page checks | | |
+| Validate hreflang codes and return links | — | ✓ |
+| Check titles and descriptions | — | ✓ |
+| Validate Open Graph metadata | — | ✓ |
+| Validate JSON-LD | — | ✓ |
+| Find exact content duplicates | — | ✓ |
+| Flag HTML, accessibility, and performance issues | — | ✓ |
+| Check llms.txt and declarative WebMCP | — | ✓ |
+| HTTP and CI | | |
+| Crawl a live origin | — | ✓ |
+| Detect HTTP redirect chains and loops | — | ✓ |
+| Report JSON with stable rule IDs | ✓ | ✓ |
+| Write SARIF reports | — | ✓ |
+| Gate on new findings against a baseline | — | ✓ |
+| Review and expire suppressions | — | ✓ |
+| Provide a ready-made GitHub Action | — | ✓ |
 
 ### How URLs map to files
 

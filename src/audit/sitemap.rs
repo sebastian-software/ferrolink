@@ -7,7 +7,7 @@ use roxmltree::{Document, Node};
 use rustc_hash::FxHashSet;
 use url::Url;
 
-use super::{Audit, Code, Lines, is_web_url, issue};
+use super::{Audit, Code, Lines, is_web_url, issue, robots::Robots};
 use crate::Error;
 
 const NS: &str = "http://www.sitemaps.org/schemas/sitemap/0.9";
@@ -24,25 +24,13 @@ struct Entry {
     url: Url,
 }
 
-pub(super) fn check(root: &Path, audit: &mut Audit<'_>) -> Result<usize, Error> {
-    let mut todo: Vec<_> = ROOTS
-        .into_iter()
-        .rev()
-        .filter(|file| audit.site.contains(file))
-        .map(|file| Visit::Enter {
-            file: file.to_owned(),
-            from: None,
-        })
-        .collect();
-    if todo.is_empty() {
-        audit.issues.push(issue(
-            Code::SitemapMissing,
-            ROOTS[0],
-            0,
-            None,
-            "The build has no sitemap.xml, sitemap-index.xml, or sitemap_index.xml.",
-        ));
-    }
+pub(super) fn check(
+    root: &Path,
+    audit: &mut Audit<'_>,
+    robots: Option<&Robots>,
+    reachable: Option<&FxHashSet<&str>>,
+) -> Result<usize, Error> {
+    let mut todo = roots(audit, robots);
     let mut visited = FxHashSet::default();
     let mut active = FxHashSet::default();
     let mut urls = FxHashSet::default();
@@ -138,7 +126,7 @@ pub(super) fn check(root: &Path, audit: &mut Audit<'_>) -> Result<usize, Error> 
                     children.push(child);
                 }
             } else if urls.insert(entry.url.clone()) {
-                check_page(audit, &entry);
+                check_page(audit, &entry, robots, reachable);
             } else {
                 audit.issues.push(issue(
                     Code::SitemapDuplicateUrl,
@@ -152,6 +140,61 @@ pub(super) fn check(root: &Path, audit: &mut Audit<'_>) -> Result<usize, Error> 
         todo.extend(children.into_iter().rev());
     }
     Ok(visited.len())
+}
+
+fn roots(audit: &mut Audit<'_>, robots: Option<&Robots>) -> Vec<Visit> {
+    let mut todo: Vec<_> = ROOTS
+        .into_iter()
+        .rev()
+        .filter(|file| audit.site.contains(file))
+        .map(|file| Visit::Enter {
+            file: file.to_owned(),
+            from: None,
+        })
+        .collect();
+    let previous_issues = audit.issues.len();
+    if let Some(robots) = robots {
+        for declaration in robots.sitemaps.iter().rev() {
+            let Some(url) = Url::parse(&declaration.value).ok().filter(is_web_url) else {
+                audit.issues.push(issue(
+                    Code::RobotsSitemapUrlInvalid,
+                    &robots.source,
+                    declaration.line,
+                    None,
+                    "Sitemap directives require an absolute HTTP(S) URL without credentials or a fragment.",
+                ));
+                continue;
+            };
+            // A host file can declare sitemaps for other sites or deployments.
+            let Some(path) = audit.local_path(&url) else {
+                continue;
+            };
+            if audit.site.contains(&path) {
+                todo.push(Visit::Enter {
+                    file: path.into_owned(),
+                    from: None,
+                });
+            } else {
+                audit.issues.push(issue(
+                    Code::RobotsSitemapTargetMissing,
+                    &robots.source,
+                    declaration.line,
+                    Some(url.as_str()),
+                    "Sitemap directive points to a file absent from the build.",
+                ));
+            }
+        }
+    }
+    if todo.is_empty() && audit.issues.len() == previous_issues {
+        audit.issues.push(issue(
+            Code::SitemapMissing,
+            ROOTS[0],
+            0,
+            None,
+            "The build has no declared or conventional local sitemap.",
+        ));
+    }
+    todo
 }
 
 fn in_namespace(node: Node<'_, '_>) -> bool {
@@ -220,10 +263,29 @@ fn index_child(audit: &mut Audit<'_>, entry: Entry) -> Option<Visit> {
     None
 }
 
-fn check_page(audit: &mut Audit<'_>, entry: &Entry) {
+fn check_page(
+    audit: &mut Audit<'_>,
+    entry: &Entry,
+    robots: Option<&Robots>,
+    reachable: Option<&FxHashSet<&str>>,
+) {
     let Some(path) = build_path(audit, entry) else {
         return;
     };
+    if let Some(robots) = robots
+        && let Some(line) = robots.blocking_line(&entry.url)
+    {
+        audit.issues.push(issue(
+            Code::SitemapBlockedByRobots,
+            &robots.source,
+            line,
+            Some(entry.url.as_str()),
+            format!(
+                "Googlebot is blocked from this URL, which is listed at {}:{}.",
+                entry.source, entry.line,
+            ),
+        ));
+    }
     let Some(file) = audit.site.serve(&path) else {
         audit.issues.push(issue(
             Code::SitemapTargetMissing,
@@ -248,6 +310,15 @@ fn check_page(audit: &mut Audit<'_>, entry: &Entry) {
             format!("Sitemap URL serves {file}, which is marked noindex."),
         ));
         return;
+    }
+    if reachable.is_some_and(|files| !files.contains(file)) {
+        audit.issues.push(issue(
+            Code::SitemapUnreachable,
+            &entry.source,
+            entry.line,
+            Some(entry.url.as_str()),
+            "Sitemap page is unreachable from the audit entry points through internal HTML links.",
+        ));
     }
     match &page.metadata.canonicals[..] {
         [] => audit.issues.push(issue(

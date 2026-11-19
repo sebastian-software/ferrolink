@@ -226,9 +226,19 @@ export function Versions() {
   );
 }
 
+function SupportCell({ supported }: { supported: boolean }) {
+  return (
+    <td>
+      <span aria-hidden="true">{supported ? "✓" : "—"}</span>
+      <span className="mono-visually-hidden">{supported ? "Supported" : "Gap"}</span>
+    </td>
+  );
+}
+
 function AuditComparisonTable() {
   return (
     <MonoWide>
+      <MonoCredit>✓ Supported · — Gap</MonoCredit>
       <MonoTable className="fl-audit-comparison" caption="Ferrolink and Search Quality Kit">
         <thead>
           <tr>
@@ -239,15 +249,22 @@ function AuditComparisonTable() {
             ))}
           </tr>
         </thead>
-        <tbody>
-          {auditComparison.rows.map(({ capability, ferrolink, kit }) => (
-            <tr key={capability}>
-              <th scope="row">{capability}</th>
-              <td>{ferrolink}</td>
-              <td>{kit}</td>
+        {auditComparison.groups.map(({ name, rows }) => (
+          <tbody key={name}>
+            <tr className="fl-audit-group">
+              <th scope="rowgroup" colSpan={3}>
+                {name}
+              </th>
             </tr>
-          ))}
-        </tbody>
+            {rows.map(({ capability, ferrolink, kit }) => (
+              <tr key={capability}>
+                <th scope="row">{capability}</th>
+                <SupportCell supported={ferrolink} />
+                <SupportCell supported={kit} />
+              </tr>
+            ))}
+          </tbody>
+        ))}
       </MonoTable>
     </MonoWide>
   );
@@ -258,7 +275,7 @@ export function SearchAudit() {
     <MonoSection
       id="audit"
       title="Audit search signals in the finished build."
-      standfirst="Catch missing sitemap targets, conflicting canonicals, and sitemap pages marked noindex before deployment."
+      standfirst="Catch missing sitemap targets, conflicting canonicals, and sitemap URLs blocked by robots.txt or marked noindex."
     >
       <MonoPassage>
         <p>
@@ -278,7 +295,7 @@ export function SearchAudit() {
       </MonoCard>
       <AuditComparisonTable />
       <MonoCredit>
-        Ferrolink coverage describes the source tree. A dash marks a feature gap.{" "}
+        Ferrolink coverage describes the source tree.{" "}
         <Link to="/reference/cli/#audit-a-static-build-for-search">
           Audit CLI and comparison sources
         </Link>

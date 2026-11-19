@@ -87,6 +87,10 @@ pub enum Error {
     Read(PathBuf, io::Error),
     /// The audit site URL is not a public HTTP(S) base URL.
     InvalidSiteUrl,
+    /// The supplied entry point does not identify an HTML page in the build.
+    InvalidAuditEntryPoint(String),
+    /// The build has no root page and reachability was given no entry points.
+    MissingAuditEntryPoint(String),
     /// The worker pool could not be started.
     Threads(rayon::ThreadPoolBuildError),
 }
@@ -100,6 +104,14 @@ impl fmt::Display for Error {
             Error::AssumePresent(error) => write!(f, "invalid assume-present pattern: {error}"),
             Error::Read(path, error) => write!(f, "cannot read {}: {error}", path.display()),
             Error::InvalidSiteUrl => write!(f, "invalid site URL: expected an HTTP(S) base URL"),
+            Error::InvalidAuditEntryPoint(entry) => write!(
+                f,
+                "invalid entry point {entry:?}: expected a URL or origin-relative path serving HTML in this build",
+            ),
+            Error::MissingAuditEntryPoint(home) => write!(
+                f,
+                "no HTML page at {home}: pass --entry-point to start the reachability check",
+            ),
             Error::Threads(error) => write!(f, "cannot start worker threads: {error}"),
         }
     }
@@ -111,7 +123,10 @@ impl std::error::Error for Error {
             Error::Root(_, error) | Error::Read(_, error) => Some(error),
             Error::Exclude(error) | Error::AssumePresent(error) => Some(error),
             Error::Threads(error) => Some(error),
-            Error::Walk(_) | Error::InvalidSiteUrl => None,
+            Error::Walk(_)
+            | Error::InvalidSiteUrl
+            | Error::InvalidAuditEntryPoint(_)
+            | Error::MissingAuditEntryPoint(_) => None,
         }
     }
 }
