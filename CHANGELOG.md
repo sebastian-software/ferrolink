@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.3](https://github.com/sebastian-software/ferrolink/compare/ferrolink-v0.2.2...ferrolink-v0.2.3) (2026-11-19)
+
+
+### Features
+
+* audit hreflang in built HTML ([a5e251d](https://github.com/sebastian-software/ferrolink/commit/a5e251d5f85f99436dfd8aacb4f196595f876dda))
+* audit static builds for search ([#34](https://github.com/sebastian-software/ferrolink/issues/34)) ([9438f41](https://github.com/sebastian-software/ferrolink/commit/9438f410de5c6950ac53ac7163df2aa8b3d22498))
+
+
+### Bug Fixes
+
+* resolve encoded dot segments before checking links ([#39](https://github.com/sebastian-software/ferrolink/issues/39)) ([5237884](https://github.com/sebastian-software/ferrolink/commit/523788485f26262cd41af55de0c38d70a4cfaace))
+* resolve static deployment links and image preloads ([a768e7b](https://github.com/sebastian-software/ferrolink/commit/a768e7bf948e4769fd87305d24c98ee41529753b))
+
 ## [0.2.2](https://github.com/sebastian-software/ferrolink/compare/ferrolink-v0.2.1...ferrolink-v0.2.2) (2026-11-10)
 
 
