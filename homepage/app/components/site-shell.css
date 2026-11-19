@@ -6,3 +6,31 @@
 .fl-home .mono-axis > .mono-wide + :is(p, .mono-row) {
   margin-top: 48px;
 }
+
+/* Keep equal space for the two tools, with room for longer capability labels. */
+.fl-home .fl-audit-comparison {
+  table-layout: fixed;
+}
+
+.fl-home .fl-audit-comparison thead th:first-child {
+  width: 54%;
+}
+
+.fl-home .fl-audit-comparison :is(th, td) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fl-home .fl-audit-comparison :is(thead th:not(:first-child), td) {
+  padding-inline-end: 0;
+  text-align: center;
+}
+
+.fl-home .fl-audit-comparison tbody th {
+  font-weight: inherit;
+}
+
+.fl-home .fl-audit-comparison .fl-audit-group th {
+  padding-block-start: 18px;
+  border-bottom-color: var(--mono-ink);
+}

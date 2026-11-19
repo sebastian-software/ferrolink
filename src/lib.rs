@@ -20,6 +20,7 @@
 //! tests; its API may change in any minor release before 1.0. The npm
 //! package's JavaScript API is the supported programmatic interface.
 
+pub mod audit;
 mod check;
 mod deploy;
 mod report;

@@ -1,12 +1,15 @@
 import { ArdoLink as Link } from "ardo/runtime";
 import {
+  MonoCard,
   MonoCredit,
   MonoPassage,
   MonoSection,
+  MonoTable,
   MonoTerms,
   MonoWide,
 } from "ferramenta-family/monografie";
 
+import { auditComparison } from "../data/site.json";
 import { ExampleSpecimen, PathsSpecimen, VersionsSpecimen } from "./check-specimens";
 import { samples, spelled } from "./home-data";
 
@@ -218,6 +221,84 @@ export function Versions() {
       <VersionsSpecimen />
       <MonoCredit>
         <Link to="/reference/cli/#usage">Every option for archived and separate versions</Link>
+      </MonoCredit>
+    </MonoSection>
+  );
+}
+
+function SupportCell({ supported }: { supported: boolean }) {
+  return (
+    <td>
+      <span aria-hidden="true">{supported ? "✓" : "—"}</span>
+      <span className="mono-visually-hidden">{supported ? "Supported" : "Gap"}</span>
+    </td>
+  );
+}
+
+function AuditComparisonTable() {
+  return (
+    <MonoWide>
+      <MonoCredit>✓ Supported · — Gap</MonoCredit>
+      <MonoTable className="fl-audit-comparison" caption="Ferrolink and Search Quality Kit">
+        <thead>
+          <tr>
+            {auditComparison.columns.map((column) => (
+              <th key={column} scope="col">
+                {column}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        {auditComparison.groups.map(({ name, rows }) => (
+          <tbody key={name}>
+            <tr className="fl-audit-group">
+              <th scope="rowgroup" colSpan={3}>
+                {name}
+              </th>
+            </tr>
+            {rows.map(({ capability, ferrolink, kit }) => (
+              <tr key={capability}>
+                <th scope="row">{capability}</th>
+                <SupportCell supported={ferrolink} />
+                <SupportCell supported={kit} />
+              </tr>
+            ))}
+          </tbody>
+        ))}
+      </MonoTable>
+    </MonoWide>
+  );
+}
+
+export function SearchAudit() {
+  return (
+    <MonoSection
+      id="audit"
+      title="Audit search signals in the finished build."
+      standfirst="Catch missing sitemap targets, conflicting canonicals, and sitemap URLs blocked by robots.txt or marked noindex."
+    >
+      <MonoPassage>
+        <p>
+          Run <code>ferrolink audit</code> with the Rust CLI and the public URL of the build.
+          Include the deployment path if the site lives under a folder such as <code>/ardo/</code>.
+          JSON reports give CI a rule ID, file, and line for each finding.
+        </p>
+      </MonoPassage>
+      <MonoCard title="Audit a build in CI">
+        <pre>
+          <code>
+            {
+              "ferrolink audit build/client \\\n--site-url https://example.org/ardo/ \\\n--format json"
+            }
+          </code>
+        </pre>
+      </MonoCard>
+      <AuditComparisonTable />
+      <MonoCredit>
+        Ferrolink coverage describes the source tree.{" "}
+        <Link to="/reference/cli/#audit-a-static-build-for-search">
+          Audit CLI and comparison sources
+        </Link>
       </MonoCredit>
     </MonoSection>
   );

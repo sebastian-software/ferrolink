@@ -4,7 +4,8 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser as _, Subcommand, ValueEnum};
-use ferrolink::{Config, Report};
+use ferrolink::{Config, Report, audit};
+use serde::Serialize;
 
 /// Fast, parallel link checker for static HTML builds.
 #[derive(clap::Parser)]
@@ -21,6 +22,8 @@ enum Command {
     /// Exits with 0 when every reference resolves, 1 when issues were found,
     /// and 2 when the check could not run.
     Check(CheckArgs),
+    /// Audit sitemaps, canonicals, noindex, and crawl rules in a static build.
+    Audit(AuditArgs),
 }
 
 #[derive(clap::Args)]
@@ -71,6 +74,34 @@ struct CheckArgs {
     timings: bool,
 }
 
+#[derive(clap::Args)]
+struct AuditArgs {
+    /// The build output directory.
+    dir: PathBuf,
+
+    /// Public HTTP(S) URL of the build, including its deployment path.
+    #[arg(long, value_name = "URL")]
+    site_url: String,
+
+    /// Local copy of the host's /robots.txt. Overrides automatic discovery
+    /// and supplies the host policy when the build is served under a subpath.
+    #[arg(long, value_name = "PATH")]
+    robots: Option<PathBuf>,
+
+    /// Report sitemap pages unreachable via internal HTML links.
+    #[arg(long)]
+    check_reachability: bool,
+
+    /// Add a public URL or origin-relative path as a starting page. Repeatable.
+    /// Also enables the reachability check.
+    #[arg(long = "entry-point", value_name = "URL_OR_PATH")]
+    entry_points: Vec<String>,
+
+    /// Output format.
+    #[arg(long, value_enum, default_value_t = Format::Human)]
+    format: Format,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum Format {
     Human,
@@ -78,8 +109,13 @@ enum Format {
 }
 
 fn main() -> ExitCode {
-    let cli = Cli::parse();
-    let Command::Check(args) = cli.command;
+    match Cli::parse().command {
+        Command::Check(args) => check(args),
+        Command::Audit(args) => audit(args),
+    }
+}
+
+fn check(args: CheckArgs) -> ExitCode {
     let mut config = Config::new(args.dir);
     config.base_path = args.base;
     config.site_url = args.site_url;
@@ -102,21 +138,67 @@ fn main() -> ExitCode {
             t.walk_ms, t.scan_ms, t.check_ms
         );
     }
+    let mut out = io::stdout().lock();
     let written = match args.format {
-        Format::Human => write_human(&mut io::stdout().lock(), &report),
-        Format::Json => write_json(&mut io::stdout().lock(), &report),
+        Format::Human => write_human(&mut out, &report),
+        Format::Json => write_json(&mut out, &report),
     };
+    exit_with_report(written, report.issues.is_empty())
+}
+
+fn audit(args: AuditArgs) -> ExitCode {
+    let options = audit::Options {
+        robots_path: args.robots.as_deref(),
+        reachability: (args.check_reachability || !args.entry_points.is_empty())
+            .then_some(args.entry_points.as_slice()),
+    };
+    let report = match audit::run_with_options(&args.dir, &args.site_url, options) {
+        Ok(report) => report,
+        Err(error) => {
+            eprintln!("error: {error}");
+            return ExitCode::from(2);
+        }
+    };
+    let mut out = io::stdout().lock();
+    let written = match args.format {
+        Format::Human => write_audit(&mut out, &report),
+        Format::Json => write_json(&mut out, &report),
+    };
+    exit_with_report(written, report.issues.is_empty())
+}
+
+fn exit_with_report(written: io::Result<()>, clean: bool) -> ExitCode {
     if let Err(error) = written
         && error.kind() != io::ErrorKind::BrokenPipe
     {
         eprintln!("error: cannot write the report: {error}");
         return ExitCode::from(2);
     }
-    if report.issues.is_empty() {
+    if clean {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
     }
+}
+
+fn write_audit(out: &mut impl Write, report: &audit::Report) -> io::Result<()> {
+    for issue in &report.issues {
+        write!(out, "{}", issue.source)?;
+        if issue.line != 0 {
+            write!(out, ":{}", issue.line)?;
+        }
+        write!(out, " · {}", issue.message)?;
+        if let Some(url) = &issue.url {
+            write!(out, " ({url})")?;
+        }
+        writeln!(out)?;
+    }
+    let summary = &report.summary;
+    writeln!(
+        out,
+        "{} findings · {} HTML pages · {} sitemap files",
+        summary.issues, summary.pages, summary.sitemaps
+    )
 }
 
 fn write_human(out: &mut impl Write, report: &Report) -> io::Result<()> {
@@ -167,7 +249,7 @@ fn write_human(out: &mut impl Write, report: &Report) -> io::Result<()> {
     )
 }
 
-fn write_json(out: &mut impl Write, report: &Report) -> io::Result<()> {
+fn write_json(out: &mut impl Write, report: &impl Serialize) -> io::Result<()> {
     serde_json::to_writer_pretty(&mut *out, report)?;
     writeln!(out)
 }

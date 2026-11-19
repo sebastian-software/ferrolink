@@ -13,16 +13,17 @@ import { WORKSHOP } from "ferramenta-family/registry";
 
 import { ferrolink, lowerFirst, samples } from "../components/home-data";
 import { Fit, Scanner } from "../components/home-engine";
-import { Example, Explainer, Paths, Versions } from "../components/home-reading";
+import { Example, Explainer, Paths, SearchAudit, Versions } from "../components/home-reading";
 import { license, nodeVersions, rustVersion, version } from "../data/site.json";
 
 // oxlint-disable-next-line react/only-export-components -- Ardo reads route metadata.
 export const meta: ArdoMetaFunction = () => [
   { title: "Ferrolink — Catch broken links before they go live." },
+  { tagName: "link", rel: "canonical", href: "https://ferrolink.dev/" },
   {
     name: "description",
     content:
-      "A link checker for static sites. Ferrolink checks links, assets and anchors in your finished build against the files that are really there, from the command line, Node.js or Vite, without a server or network requests.",
+      "Ferrolink checks links, assets, and anchors in static builds. Its Rust CLI audits sitemaps, canonicals, and noindex directives before deployment.",
   },
 ];
 // oxlint-disable-next-line react/only-export-components -- Ardo reads the route layout.
@@ -90,6 +91,7 @@ const chapters = [
   { key: "example", Chapter: Example },
   { key: "paths", Chapter: Paths },
   { key: "versions", Chapter: Versions },
+  { key: "audit", Chapter: SearchAudit },
   { key: "scanner", Chapter: Scanner },
   { key: "fit", Chapter: Fit },
 ];

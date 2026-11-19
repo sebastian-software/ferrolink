@@ -41,7 +41,15 @@ const nodeVersions = node.split("||").map((range) => {
   if (!major || !minor) throw new Error(`Cannot read the Node.js range ${node}.`);
   return `${major}.${minor}+`;
 });
-await writeData("site.json", { version, rustVersion, license, nodeVersions });
+const supportMarks = new Set(["✓", "—"]);
+const readme = await readFile(new URL("README.md.src", repository), "utf8");
+await writeData("site.json", {
+  version,
+  rustVersion,
+  license,
+  nodeVersions,
+  auditComparison: readAuditComparison(readme),
+});
 const labels = {
   guide: "Guide",
   reference: "Reference",
@@ -61,6 +69,60 @@ async function writeData(name, value) {
   const result = await format(name, JSON.stringify(value));
   if (result.errors.length) throw new Error(`Cannot format ${name}`);
   await writeFile(new URL(name, data), result.code);
+}
+
+/** The README supplies the groups and support marks shown on both surfaces. */
+function readAuditComparison(markdown) {
+  const columns = ["Capability", "Ferrolink", "Search Quality Kit"];
+  const lines = markdown.split("\n");
+  const heading = lines.findIndex((line) => comparisonCells(line).join("|") === columns.join("|"));
+  if (heading === -1) {
+    throw new Error("README.md.src is missing the Search Quality Kit comparison.");
+  }
+  const groups = readComparisonGroups(lines.slice(heading + 2));
+  if (groups.length === 0 || groups.some(({ rows }) => rows.length === 0)) {
+    throw new Error("The Search Quality Kit comparison needs nonempty groups.");
+  }
+  return { columns, groups };
+}
+
+function readComparisonGroups(lines) {
+  const groups = [];
+  for (const line of lines) {
+    if (!line.startsWith("|")) break;
+    const row = readComparisonRow(line);
+    if ("rows" in row) {
+      groups.push(row);
+      continue;
+    }
+    const group = groups.at(-1);
+    if (group === undefined) {
+      throw new Error(`Expected a group before ${row.capability}`);
+    }
+    group.rows.push(row);
+  }
+  return groups;
+}
+
+function readComparisonRow(line) {
+  const [capability, ferrolink, kit, extra] = comparisonCells(line);
+  if (!capability || ferrolink === undefined || kit === undefined || extra !== undefined) {
+    throw new Error(`Expected three cells in comparison row ${line}`);
+  }
+  if (ferrolink === "" && kit === "") {
+    return { name: capability, rows: [] };
+  }
+  if (!supportMarks.has(ferrolink) || !supportMarks.has(kit)) {
+    throw new Error(`Expected support marks for ${capability}`);
+  }
+  return { capability, ferrolink: ferrolink === "✓", kit: kit === "✓" };
+}
+
+function comparisonCells(line) {
+  return line
+    .split("|")
+    .slice(1, -1)
+    .map((cell) => cell.trim());
 }
 
 function rewriteLinks(markdown, source) {
