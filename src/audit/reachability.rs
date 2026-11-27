@@ -6,10 +6,15 @@ use url::Url;
 use super::{Audit, is_web_url};
 use crate::Error;
 
+pub(super) struct Navigation<'a> {
+    pub reachable: FxHashSet<&'a str>,
+    pub linked_or_entry: FxHashSet<&'a str>,
+}
+
 pub(super) fn walk<'a>(
     audit: &Audit<'a>,
     entry_points: &[String],
-) -> Result<FxHashSet<&'a str>, Error> {
+) -> Result<Navigation<'a>, Error> {
     let mut home = audit.base.clone();
     home.set_path(audit.resolver.base_path());
     let mut pending: Vec<_> = target(audit, home.clone()).into_iter().collect();
@@ -31,21 +36,41 @@ pub(super) fn walk<'a>(
 
     // Key by file so aliases such as /guide/ and /guide/index.html lead to
     // the same page, and query strings and fragments do not expand the walk.
-    let mut seen = FxHashSet::default();
-    pending.retain(|key| seen.insert(*key));
-    while let Some(key) = pending.pop() {
-        let page = &audit.pages[key];
-        let base = page.document_base(&page.page_url);
-        for href in &page.metadata.links {
-            if let Ok(url) = base.join(href)
-                && let Some(key) = target(audit, url)
-                && seen.insert(key)
-            {
-                pending.push(key);
+    let mut reachable = FxHashSet::default();
+    pending.retain(|key| reachable.insert(*key));
+    let mut linked_or_entry = reachable.clone();
+    while let Some(source) = pending.pop() {
+        for target in targets(audit, source) {
+            if target != source {
+                linked_or_entry.insert(target);
+            }
+            if reachable.insert(target) {
+                pending.push(target);
             }
         }
     }
-    Ok(seen)
+
+    // An unreachable page can still link to another page in the build.
+    for &source in audit
+        .pages
+        .keys()
+        .filter(|source| !reachable.contains(*source))
+    {
+        linked_or_entry.extend(targets(audit, source).filter(|&target| target != source));
+    }
+    Ok(Navigation {
+        reachable,
+        linked_or_entry,
+    })
+}
+
+fn targets<'a>(audit: &Audit<'a>, source: &str) -> impl Iterator<Item = &'a str> {
+    let page = &audit.pages[source];
+    let base = page.document_base(&page.page_url);
+    page.metadata
+        .links
+        .iter()
+        .filter_map(move |href| target(audit, base.join(href).ok()?))
 }
 
 fn target<'a>(audit: &Audit<'a>, mut url: Url) -> Option<&'a str> {
