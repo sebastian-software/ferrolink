@@ -9,6 +9,7 @@ use std::path::Path;
 
 use url::{Position, Url};
 
+use super::{Code, Issue, issue};
 use crate::Error;
 
 /// Google uses at most the first 500 KiB of robots.txt.
@@ -18,6 +19,7 @@ pub(super) struct Robots {
     pub source: String,
     pub sitemaps: Vec<Declaration>,
     rules: Vec<Rule>,
+    syntax: Vec<(u32, &'static str)>,
 }
 
 pub(super) struct Declaration {
@@ -59,7 +61,18 @@ impl Robots {
                 .map_or(0, |position| position + 1);
             bytes.truncate(end);
         }
-        Ok(Self::parse(&String::from_utf8_lossy(&bytes), source))
+        let mut robots = Self::parse(&String::from_utf8_lossy(&bytes), source);
+        if let Err(error) = std::str::from_utf8(&bytes) {
+            let prefix = &bytes[..error.valid_up_to()];
+            let breaks = memchr::memchr_iter(b'\n', prefix).count()
+                + memchr::memchr_iter(b'\r', prefix)
+                    .filter(|&offset| bytes.get(offset + 1) != Some(&b'\n'))
+                    .count();
+            robots
+                .syntax
+                .push(((breaks + 1) as u32, "robots.txt must be UTF-8."));
+        }
+        Ok(robots)
     }
 
     fn parse(text: &str, source: String) -> Self {
@@ -75,19 +88,47 @@ impl Robots {
         let mut scope = Scope::Other;
         let mut found_googlebot = false;
         let mut had_rules = false;
+        let mut had_agent = false;
+        let mut syntax = Vec::new();
         for (index, line) in text.split(['\r', '\n']).enumerate() {
             let line_number = (index + 1) as u32;
-            let line = line.split_once('#').map_or(line, |(line, _)| line);
+            let line = line
+                .split_once('#')
+                .map_or(line, |(line, _)| line)
+                .trim_ascii();
+            if line.is_empty() {
+                continue;
+            }
             let Some((field, value)) = line.split_once(':') else {
+                syntax.push((
+                    line_number,
+                    "Separate the robots.txt field and value with a colon.",
+                ));
                 continue;
             };
+            let field = field.trim_ascii();
+            if field.is_empty()
+                || !field
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+            {
+                syntax.push((
+                    line_number,
+                    "Use a valid robots.txt field name before the colon.",
+                ));
+                continue;
+            }
             let value = value.trim_ascii();
-            match field.trim_ascii().to_ascii_lowercase().as_str() {
+            match field.to_ascii_lowercase().as_str() {
                 "sitemap" => sitemaps.push(Declaration {
                     line: line_number,
                     value: value.to_owned(),
                 }),
                 "user-agent" => {
+                    had_agent = true;
+                    if value != "*" && (value.is_empty() || !value.bytes().all(is_agent_byte)) {
+                        syntax.push((line_number, "Use * or a User-agent token made of ASCII letters, hyphens, and underscores."));
+                    }
                     if had_rules {
                         scope = Scope::Other;
                         had_rules = false;
@@ -96,6 +137,14 @@ impl Robots {
                     found_googlebot |= scope == Scope::Googlebot;
                 }
                 "allow" | "disallow" => {
+                    if !had_agent {
+                        syntax.push((
+                            line_number,
+                            "Put Allow and Disallow rules after a User-agent line.",
+                        ));
+                    } else if !value.is_empty() && !valid_pattern(value) {
+                        syntax.push((line_number, "Use an empty or root-relative crawl rule path without whitespace, controls, or invalid percent escapes."));
+                    }
                     had_rules = true;
                     // An empty directive places no restriction on a URL.
                     if scope == Scope::Other || value.is_empty() {
@@ -108,7 +157,7 @@ impl Robots {
                     };
                     rules.push(Rule {
                         line: line_number,
-                        allow: field.trim_ascii().eq_ignore_ascii_case("allow"),
+                        allow: field.eq_ignore_ascii_case("allow"),
                         pattern: normalize(value).into_owned(),
                     });
                 }
@@ -121,7 +170,14 @@ impl Robots {
             source,
             sitemaps,
             rules,
+            syntax,
         }
+    }
+
+    pub(super) fn report_syntax(&self, issues: &mut Vec<Issue>) {
+        issues.extend(self.syntax.iter().map(|&(line, message)| {
+            issue(Code::RobotsSyntaxInvalid, &self.source, line, None, message)
+        }));
     }
 
     pub(super) fn blocking_line(&self, url: &Url) -> Option<u32> {
@@ -135,12 +191,29 @@ impl Robots {
     }
 }
 
+fn is_agent_byte(byte: u8) -> bool {
+    byte.is_ascii_alphabetic() || matches!(byte, b'-' | b'_')
+}
+
+fn valid_pattern(value: &str) -> bool {
+    value.starts_with('/')
+        && !value
+            .bytes()
+            .any(|byte| byte.is_ascii_whitespace() || byte.is_ascii_control())
+        && memchr::memchr_iter(b'%', value.as_bytes()).all(|offset| {
+            value
+                .as_bytes()
+                .get(offset + 1..offset + 3)
+                .is_some_and(|escape| escape.iter().all(u8::is_ascii_hexdigit))
+        })
+}
+
 fn user_agent_scope(value: &str) -> Scope {
     if value.split_ascii_whitespace().next() == Some("*") {
         return Scope::Wildcard;
     }
     let name = value
-        .split(|ch: char| !(ch.is_ascii_alphabetic() || matches!(ch, '-' | '_')))
+        .split(|ch: char| !ch.is_ascii() || !is_agent_byte(ch as u8))
         .next()
         .unwrap_or_default();
     if name.eq_ignore_ascii_case("googlebot") {

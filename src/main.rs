@@ -88,7 +88,7 @@ struct AuditArgs {
     #[arg(long, value_name = "PATH")]
     robots: Option<PathBuf>,
 
-    /// Report sitemap pages unreachable via internal HTML links.
+    /// Report unreachable sitemap pages and pages without incoming internal links.
     #[arg(long)]
     check_reachability: bool,
 

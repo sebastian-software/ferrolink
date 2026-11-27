@@ -7,7 +7,10 @@ use roxmltree::{Document, Node};
 use rustc_hash::FxHashSet;
 use url::Url;
 
-use super::{Audit, Code, Lines, is_web_url, issue, lastmod, robots::Robots};
+use super::{
+    Audit, Code, Lines, absolute_web_url, is_web_url, issue, lastmod, reachability::Navigation,
+    robots::Robots,
+};
 use crate::Error;
 
 const NS: &str = "http://www.sitemaps.org/schemas/sitemap/0.9";
@@ -28,7 +31,7 @@ pub(super) fn check(
     root: &Path,
     audit: &mut Audit<'_>,
     robots: Option<&Robots>,
-    reachable: Option<&FxHashSet<&str>>,
+    navigation: Option<&Navigation<'_>>,
 ) -> Result<usize, Error> {
     let mut todo = roots(audit, robots);
     let mut visited = FxHashSet::default();
@@ -127,7 +130,7 @@ pub(super) fn check(
                     children.push(child);
                 }
             } else if urls.insert(entry.url.clone()) {
-                check_page(audit, &entry, robots, reachable);
+                check_page(audit, &entry, robots, navigation);
             } else {
                 audit.issues.push(issue(
                     Code::SitemapDuplicateUrl,
@@ -156,7 +159,7 @@ fn roots(audit: &mut Audit<'_>, robots: Option<&Robots>) -> Vec<Visit> {
     let previous_issues = audit.issues.len();
     if let Some(robots) = robots {
         for declaration in robots.sitemaps.iter().rev() {
-            let Some(url) = Url::parse(&declaration.value).ok().filter(is_web_url) else {
+            let Some(url) = absolute_web_url(&declaration.value) else {
                 audit.issues.push(issue(
                     Code::RobotsSitemapUrlInvalid,
                     &robots.source,
@@ -287,7 +290,7 @@ fn check_page(
     audit: &mut Audit<'_>,
     entry: &Entry,
     robots: Option<&Robots>,
-    reachable: Option<&FxHashSet<&str>>,
+    navigation: Option<&Navigation<'_>>,
 ) {
     let Some(path) = build_path(audit, entry) else {
         return;
@@ -331,13 +334,22 @@ fn check_page(
         ));
         return;
     }
-    if reachable.is_some_and(|files| !files.contains(file)) {
+    if navigation.is_some_and(|links| !links.reachable.contains(file)) {
         audit.issues.push(issue(
             Code::SitemapUnreachable,
             &entry.source,
             entry.line,
             Some(entry.url.as_str()),
             "Sitemap page is unreachable from the audit entry points through internal HTML links.",
+        ));
+    }
+    if navigation.is_some_and(|links| !links.linked_or_entry.contains(file)) {
+        audit.issues.push(issue(
+            Code::SitemapNoIncomingLinks,
+            &entry.source,
+            entry.line,
+            Some(entry.url.as_str()),
+            "No other page in the build links to this sitemap page through an internal HTML link.",
         ));
     }
     match &page.metadata.canonicals[..] {

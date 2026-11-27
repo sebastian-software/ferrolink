@@ -131,6 +131,13 @@ pages without `noindex`, the audit requires one nonempty title in the head.
 A meta description is optional. When present, it must contain text and appear
 once in the head.
 
+For pages with Open Graph metadata in the head, the audit checks that
+`og:title`, `og:type`, `og:url`, and `og:image` are present and nonempty.
+An optional `og:description` must contain text when declared. URLs must be
+absolute HTTP(S) URLs. The audit compares `og:url` with the canonical when
+the page has one valid canonical and checks that local `og:image` files exist.
+Multiple image declarations are supported. See the [Open Graph protocol](https://ogp.me/).
+
 The audit validates JSON syntax in embedded `application/ld+json` script
 blocks throughout the built HTML. The `json_ld_syntax_invalid` finding
 locates the parse error in the HTML file. Schema.org and rich-result checks
@@ -151,9 +158,11 @@ present.
 
 At the origin root, the audit reads the build's `robots.txt` when present.
 It discovers local sitemaps from `Sitemap:` declarations alongside the
-conventional filenames. It also reports sitemap URLs blocked for Googlebot
-and points to the matching `Disallow` line. Declarations for other origins
-or deployments are outside the audit's scope.
+conventional filenames. It reports malformed fields, invalid user-agent
+tokens and rule paths, and rules before the first user-agent group.
+Well-formed extension fields are accepted. It also reports sitemap URLs
+blocked for Googlebot and points to the matching `Disallow` line. Sitemap
+declarations for other origins or deployments are checked for URL syntax.
 
 For a build deployed under a subpath, supply a local copy of the origin's
 `/robots.txt` with `--robots`. The flag also lets you override the build file
@@ -167,8 +176,10 @@ cargo run --release --locked -- audit build/client --site-url https://example.or
 To check internal reachability, pass `--check-reachability`. Ferrolink
 starts at the site's home page and follows local `<a href>` and `<area href>`
 links in the built HTML. A sitemap entry for an existing HTML page without
-`noindex` produces `sitemap_unreachable` if the walk misses it. The finding
-points to the entry in the sitemap.
+`noindex` produces `sitemap_unreachable` if the walk misses it. The same
+option reports `sitemap_no_incoming_links` when no other built HTML page
+links to the sitemap page. The site root and explicit entry points are
+exempt from the incoming-link check. Both findings point to the sitemap entry.
 
 Use the repeatable `--entry-point` option for separately linked sections.
 Each entry is a public URL or an origin-relative path, including the
@@ -204,7 +215,7 @@ and [CI guide](https://github.com/silesiansolutions/search-quality-kit/blob/47dc
 | Check cross-page fragments | ✓ | — |
 | Check redirect and deployment files | ✓ | — |
 | Check static reachability from entry points | ✓ | — |
-| Find pages with zero incoming links | — | ✓ |
+| Find sitemap pages with zero incoming internal links | ✓ | ✓ |
 | Sitemaps and indexing | | |
 | Validate XML sitemaps and indexes | ✓ | ✓ |
 | Discover sitemaps via robots.txt | ✓ | ✓ |
@@ -215,11 +226,11 @@ and [CI guide](https://github.com/silesiansolutions/search-quality-kit/blob/47dc
 | Detect HTML noindex in sitemap entries | ✓ | ✓ |
 | Detect noindex in HTTP headers | — | ✓ |
 | Detect robots.txt blocks on sitemap URLs | ✓ | ✓ |
-| Validate robots.txt syntax | — | ✓ |
+| Validate robots.txt syntax | ✓ | ✓ |
 | Page checks | | |
 | Validate HTML hreflang codes and return links | ✓ | ✓ |
 | Check titles and meta descriptions | ✓ | ✓ |
-| Validate Open Graph metadata | — | ✓ |
+| Validate Open Graph metadata | ✓ | ✓ |
 | Validate embedded JSON-LD syntax | ✓ | ✓ |
 | Check Schema.org and rich-result requirements | — | ✓ |
 | Find exact content duplicates | — | ✓ |

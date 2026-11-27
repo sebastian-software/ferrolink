@@ -3,7 +3,7 @@
 use rustc_hash::FxHashSet;
 use url::Url;
 
-use super::{Audit, Code, is_web_url, issue};
+use super::{Audit, Code, absolute_web_url, issue};
 
 struct LocalLink<'a> {
     source: &'a str,
@@ -34,7 +34,7 @@ pub(super) fn check(audit: &mut Audit<'_>) {
                     format!("Invalid hreflang code {language:?}. Use a two-letter language, optional script and region, or x-default."),
                 ));
             }
-            let Some(url) = absolute_url(&alternate.href) else {
+            let Some(url) = absolute_web_url(&alternate.href) else {
                 audit.issues.push(issue(
                     Code::HreflangUrlInvalid,
                     source,
@@ -99,17 +99,6 @@ pub(super) fn check(audit: &mut Audit<'_>) {
             ));
         }
     }
-}
-
-fn absolute_url(href: &str) -> Option<Url> {
-    let href = href.trim_ascii();
-    let (scheme, authority_and_path) = href.split_once("://")?;
-    if !(scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https"))
-        || authority_and_path.starts_with(['/', '\\'])
-    {
-        return None;
-    }
-    Url::parse(href).ok().filter(is_web_url)
 }
 
 fn valid_language(value: &str) -> bool {
@@ -180,7 +169,7 @@ const REGIONS: &str =
 
 #[cfg(test)]
 mod tests {
-    use super::{absolute_url, valid_language};
+    use super::{absolute_web_url, valid_language};
 
     #[test]
     fn validates_registered_language_script_and_region_codes() {
@@ -207,7 +196,7 @@ mod tests {
 
     #[test]
     fn requires_fully_qualified_alternate_urls() {
-        assert!(absolute_url("https://example.org/ardo/en/?view=full").is_some());
+        assert!(absolute_web_url("https://example.org/ardo/en/?view=full").is_some());
         for href in [
             "",
             "/ardo/en/",
@@ -219,7 +208,7 @@ mod tests {
             "https://user@example.org/ardo/en/",
             "https://example.org/ardo/en/#overview",
         ] {
-            assert!(absolute_url(href).is_none(), "{href}");
+            assert!(absolute_web_url(href).is_none(), "{href}");
         }
     }
 }

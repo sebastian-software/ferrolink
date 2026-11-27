@@ -4,7 +4,7 @@ use std::convert::Infallible;
 
 use html5gum::{DefaultEmitter, StartTag, Token, Tokenizer};
 
-use super::Lines;
+use super::{Lines, open_graph::OpenGraph};
 
 #[derive(Default)]
 pub(super) struct Metadata {
@@ -16,6 +16,7 @@ pub(super) struct Metadata {
     pub titles: Vec<TextElement>,
     pub descriptions: Vec<TextElement>,
     pub json_ld_errors: Vec<JsonLdError>,
+    pub open_graph: OpenGraph,
 }
 
 pub(super) struct Canonical {
@@ -131,6 +132,13 @@ pub(super) fn scan(html: &[u8], collect_links: bool) -> Metadata {
                     });
                 }
                 b"meta" => {
+                    if in_head && let Some(property) = attr(&tag, b"property") {
+                        metadata.open_graph.record(
+                            property.trim_ascii(),
+                            || attr(&tag, b"content").unwrap_or_default().into_owned(),
+                            lines.at(tag.span.start),
+                        );
+                    }
                     let name = attr(&tag, b"name").unwrap_or_default();
                     let name = name.trim_ascii();
                     if in_head && name.eq_ignore_ascii_case("description") {

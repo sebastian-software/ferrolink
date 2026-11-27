@@ -3,6 +3,7 @@
 mod hreflang;
 mod html;
 mod lastmod;
+mod open_graph;
 mod reachability;
 mod robots;
 mod sitemap;
@@ -55,6 +56,13 @@ pub enum Code {
     HreflangTargetMissing,
     HreflangSelfMissing,
     HreflangReturnMissing,
+    OpenGraphPropertyMissing,
+    OpenGraphPropertyEmpty,
+    OpenGraphUrlInvalid,
+    OpenGraphCanonicalMismatch,
+    OpenGraphImageMissing,
+    RobotsSyntaxInvalid,
+    SitemapNoIncomingLinks,
 }
 
 /// A finding in a build file or the explicitly supplied robots.txt.
@@ -91,7 +99,7 @@ pub struct Report {
 pub struct Options<'a> {
     /// Local copy of the origin's robots.txt.
     pub robots_path: Option<&'a Path>,
-    /// Enables reachability checks. The slice adds public URLs or origin-relative
+    /// Enables reachability and incoming-link checks. The slice adds public URLs or origin-relative
     /// paths as entry points alongside the site root.
     pub reachability: Option<&'a [String]>,
 }
@@ -185,14 +193,18 @@ pub fn run_with_options(
         pages,
         issues: Vec::new(),
     };
-    let reachable = options
+    let navigation = options
         .reachability
         .map(|entries| reachability::walk(&audit, entries))
         .transpose()?;
-    let sitemaps = sitemap::check(root, &mut audit, robots.as_ref(), reachable.as_ref())?;
+    let sitemaps = sitemap::check(root, &mut audit, robots.as_ref(), navigation.as_ref())?;
+    if let Some(robots) = &robots {
+        robots.report_syntax(&mut audit.issues);
+    }
     audit.check_canonicals();
     audit.check_page_metadata();
     hreflang::check(&mut audit);
+    open_graph::check(&mut audit);
     audit.issues.sort_unstable_by(|a, b| {
         (&a.source, a.line, a.code, &a.url, &a.message)
             .cmp(&(&b.source, b.line, b.code, &b.url, &b.message))
@@ -401,6 +413,17 @@ fn is_web_url(url: &Url) -> bool {
         && url.username().is_empty()
         && url.password().is_none()
         && url.fragment().is_none()
+}
+
+fn absolute_web_url(href: &str) -> Option<Url> {
+    let href = href.trim_ascii();
+    let (scheme, authority_and_path) = href.split_once("://")?;
+    if !(scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https"))
+        || authority_and_path.starts_with(['/', '\\'])
+    {
+        return None;
+    }
+    Url::parse(href).ok().filter(is_web_url)
 }
 
 struct Lines(Vec<usize>);

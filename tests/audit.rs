@@ -300,14 +300,17 @@ fn discovers_declared_sitemaps_and_reports_the_effective_googlebot_rule() {
     assert_eq!(issues["summary"]["sitemaps"], 2);
     assert_eq!(
         findings(&issues),
-        [("sitemap_blocked_by_robots", "robots.txt", 7)]
+        [
+            ("robots_syntax_invalid", "robots.txt", 4),
+            ("sitemap_blocked_by_robots", "robots.txt", 7),
+        ]
     );
     assert_eq!(
-        issues["issues"][0]["url"],
+        issues["issues"][1]["url"],
         "https://example.org/guide/draft"
     );
     assert!(
-        issues["issues"][0]["message"]
+        issues["issues"][1]["message"]
             .as_str()
             .unwrap()
             .contains("search/guide.xml:4")
@@ -381,6 +384,36 @@ fn subpath_audits_use_an_explicit_host_robots_file() {
 }
 
 #[test]
+fn reports_malformed_directives_in_a_supplied_host_robots_file() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().join("build");
+    let host_robots = temp.path().join("host-robots.txt");
+    let site_url = "https://example.org/ardo/";
+    write(
+        &root,
+        "sitemap.xml",
+        "<urlset><url><loc>https://example.org/ardo/</loc></url></urlset>",
+    );
+    write(
+        &root,
+        "index.html",
+        r#"<!doctype html><title>Guide</title><link rel="canonical" href="/ardo/">"#,
+    );
+    fs::write(
+        &host_robots,
+        b"\xef\xbb\xbf# host policy\r\nDisallow: /before-group\rCrawl-delay: 5\nUser-agent: \nUser-agent: *\nAllow: \nDisallow: https://example.org/private\nDisallow /preview\nDisallow: /bad%zz\nDisallow: /private/*$\nUser agent: OtherBot\n# \xff\n",
+    ).unwrap();
+
+    assert!(findings(&report(&root, site_url, 0)).is_empty());
+    let issues = parse_report(audit_with_robots(&root, site_url, Some(&host_robots)), 1);
+    let source = host_robots.to_str().unwrap();
+    assert_eq!(
+        findings(&issues),
+        [2, 4, 7, 8, 9, 11, 12].map(|line| ("robots_syntax_invalid", source, line))
+    );
+}
+
+#[test]
 fn reachability_follows_html_navigation_and_finds_disconnected_sitemap_pages() {
     let temp = TempDir::new().unwrap();
     let root = temp.path();
@@ -394,13 +427,15 @@ fn reachability_follows_html_navigation_and_finds_disconnected_sitemap_pages() {
   <url><loc>https://example.org/docs/island/b</loc></url>
   <url><loc>https://example.org/docs/standalone</loc></url>
   <url><loc>https://example.org/docs/spec.pdf</loc></url>
+  <url><loc>https://example.org/docs/</loc></url>
 </urlset>"#,
     );
     write(
         root,
         "index.html",
-        r#"<!doctype html><link rel="preload" href="/docs/standalone">
-<template><a href="/docs/island/a">Inert link</a></template>
+        r#"<!doctype html><title>Home</title><link rel="canonical" href="/docs/">
+<link rel="preload" href="/docs/standalone">
+<template><a href="/docs/standalone">Inert link</a></template>
 <a href="http://example.org/docs/island/a">Different origin</a>
 <a href="guide?entry=1#top">Guide</a>"#,
     );
@@ -414,7 +449,7 @@ fn reachability_follows_html_navigation_and_finds_disconnected_sitemap_pages() {
         root,
         "manual/install.html",
         r#"<!doctype html><title>Guide</title><link rel="canonical" href="https://example.org/docs/manual/install">
-<a href="/docs/">Back to the home page</a>"#,
+<p>Install the tool.</p>"#,
     );
     write(
         root,
@@ -431,7 +466,8 @@ fn reachability_follows_html_navigation_and_finds_disconnected_sitemap_pages() {
     write(
         root,
         "standalone.html",
-        r#"<!doctype html><title>Guide</title><link rel="canonical" href="https://example.org/docs/standalone">"#,
+        r#"<!doctype html><title>Guide</title><link rel="canonical" href="https://example.org/docs/standalone">
+<a href="/docs/standalone.html?view=full#heading">This page</a>"#,
     );
     write(root, "spec.pdf", "A non-HTML document.");
     assert!(findings(&report(root, site_url, 0)).is_empty());
@@ -447,6 +483,7 @@ fn reachability_follows_html_navigation_and_finds_disconnected_sitemap_pages() {
             ("sitemap_unreachable", "sitemap.xml", 3),
             ("sitemap_unreachable", "sitemap.xml", 4),
             ("sitemap_unreachable", "sitemap.xml", 5),
+            ("sitemap_no_incoming_links", "sitemap.xml", 5),
         ]
     );
     assert_eq!(
@@ -611,6 +648,67 @@ fn audits_titles_and_optional_descriptions_on_sitemap_html_pages() {
             ("title_missing", "missing.html", 0),
             ("meta_description_empty", "missing.html", 3),
         ]
+    );
+}
+
+#[test]
+fn checks_declared_open_graph_metadata_and_local_images() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    let site_url = "https://example.org/ardo/";
+    write(
+        root,
+        "sitemap.xml",
+        "<urlset><url><loc>https://example.org/ardo/</loc></url></urlset>",
+    );
+    write(root, "social.png", "");
+    write(
+        root,
+        "index.html",
+        r#"<!doctype html>
+<head><title>Guide</title><link rel="canonical" href="./">
+<meta property="og:title" content="Guide">
+<meta property="OG:TYPE" content="website">
+<meta property="og:url" content="https://example.org/ardo/">
+<meta property="og:image" content="https://example.org/ardo/social.png?v=2">
+<meta property="og:image" content="https://cdn.example.org/social.png">
+</head>"#,
+    );
+    write(
+        root,
+        "ordinary.html",
+        r#"<p>Without social metadata</p><meta property="og:title">"#,
+    );
+    assert!(findings(&report(root, site_url, 0)).is_empty());
+
+    write(
+        root,
+        "preview.html",
+        r#"<!doctype html>
+<head><title>Preview</title><link rel="canonical" href="/ardo/preview.html">
+<meta property="og:title" content=" &nbsp; ">
+<meta property="og:url" content="https://example.org/ardo/">
+<meta property="og:image" content="/ardo/social.png">
+<meta property="og:image" content="https://example.org/ardo/missing.png">
+<meta property="og:description">
+<template><meta property="og:type" content="website"></template>
+</head>"#,
+    );
+    let issues = report(root, site_url, 1);
+    assert_eq!(
+        findings(&issues),
+        [
+            ("open_graph_property_missing", "preview.html", 0),
+            ("open_graph_property_empty", "preview.html", 3),
+            ("open_graph_canonical_mismatch", "preview.html", 4),
+            ("open_graph_url_invalid", "preview.html", 5),
+            ("open_graph_image_missing", "preview.html", 6),
+            ("open_graph_property_empty", "preview.html", 7),
+        ]
+    );
+    assert_eq!(
+        issues["issues"][4]["url"],
+        "https://example.org/ardo/missing.png"
     );
 }
 
